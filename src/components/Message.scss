@@ -1,0 +1,27 @@
+.message {
+  .datetime {
+    color: #999;
+    font-size: 12px;
+    margin-bottom: 5px;
+  }
+
+  .content {
+    cursor: pointer;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+    background-color: #fff1;
+    border-radius: 5px;
+    margin-bottom: 10px;
+    padding: 10px;
+  }
+
+  .file-icon {
+    margin-left: 2px;
+    margin-right: 8px;
+    opacity: 0.3;
+    position: relative;
+    top: 1px;
+  }
+
+  position: relative;
+  width: 100%;
+}
