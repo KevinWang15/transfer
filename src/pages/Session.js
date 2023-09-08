@@ -10,7 +10,13 @@ import toast from "../utils/toast.js";
 import "./Session.scss";
 import Message from "../components/Message.js";
 import { IonIcon } from "@ionic/react";
-import { documentOutline, paperPlaneOutline } from "ionicons/icons/index.js";
+import {
+  documentOutline,
+  paperPlaneOutline,
+  qrCodeSharp,
+} from "ionicons/icons/index.js";
+import QRCode from "qrcode";
+import sweetalert2 from "sweetalert2";
 
 class Session extends React.Component {
   state = {
@@ -120,12 +126,14 @@ class Session extends React.Component {
     return (
       <>
         <header>
-          <nav className="navbar navbar-expand-md navbar-dark fixed-top bg-dark">
-            <div className="container-fluid">
-              <span className="navbar-brand">
-                {this.props.router.params.id}
-              </span>
-            </div>
+          <nav className="navbar navbar-expand-md navbar-dark fixed-top bg-dark justify-content-between">
+            <span className={"title"}>{this.props.router.params.id}</span>
+            <span className={"button"}>
+              <IonIcon
+                onClick={() => this.displayQRCode()}
+                icon={qrCodeSharp}
+              ></IonIcon>
+            </span>
           </nav>
         </header>
 
@@ -144,7 +152,11 @@ class Session extends React.Component {
             <div className="row">
               {!!this.state.serversideConfig && (
                 <div className={"message-retention-warning"}>
-                  Only the most recent {this.state.serversideConfig.messagesToKeep.maxCount} messages within a {this.state.serversideConfig.messagesToKeep.ttl/86400}-day window are preserved
+                  Only the most recent{" "}
+                  {this.state.serversideConfig.messagesToKeep.maxCount} messages
+                  within a{" "}
+                  {this.state.serversideConfig.messagesToKeep.ttl / 86400}-day
+                  window are preserved
                 </div>
               )}
               <div className="col flex-column flex-grow-0">
@@ -219,6 +231,38 @@ class Session extends React.Component {
       document.removeEventListener("drop", dropListener);
     };
   };
+
+  async generateQRCode(url) {
+    try {
+      const canvas = await QRCode.toCanvas(url, {
+        width: 360 * 2,
+      });
+      return canvas.toDataURL(); // Convert the canvas to a data URL
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+      return null;
+    }
+  }
+
+  async displayQRCode() {
+    const url = window.location.href;
+    const qrCodeDataURL = await this.generateQRCode(url);
+
+    if (qrCodeDataURL) {
+      sweetalert2.fire({
+        imageUrl: qrCodeDataURL,
+        imageWidth: 360,
+        title: "Scan this QR code to join the session",
+        showCloseButton: true,
+      });
+    } else {
+      sweetalert2.fire({
+        icon: "error",
+        title: "Error",
+        text: "Unable to generate QR code.",
+      });
+    }
+  }
 }
 
 export default withRouter(Session);

@@ -37,11 +37,37 @@
 }
 
 .session-main {
-  margin-top: 58px;
-  height: calc(100% - 150px);
+  margin-top: 66px;
+  height: calc(100% - 158px);
   overflow-y: auto;
 }
 
 .navbar {
   background-color: #00000022 !important;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+
+  .title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .button {
+    margin-left: 10px;
+
+    ion-icon {
+      zoom: 1.5;
+      padding: 10px;
+      margin: -8px -10px -12px -10px;
+      flexGrow: 0;
+    }
+  }
 }
