@@ -7,11 +7,10 @@
     <option name="rewriteBookmarkType" value="true" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="70bdf409-dd43-4fde-889a-fdcdc2cbd105" name="Changes" comment="implement &quot;scan QR to join session&quot;">
+    <list default="true" id="70bdf409-dd43-4fde-889a-fdcdc2cbd105" name="Changes" comment="feat: button to delete everything in this session immediately">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/Message.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/Message.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/Message.scss" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/Message.scss" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yarn.lock" beforeDir="false" afterPath="$PROJECT_DIR$/yarn.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/server/services/MessageService.js" beforeDir="false" afterPath="$PROJECT_DIR$/server/services/MessageService.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/pages/Session.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/Session.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -115,7 +114,7 @@
       <workItem from="1694172839255" duration="4595000" />
       <workItem from="1694179606476" duration="583000" />
       <workItem from="1694250589423" duration="6000" />
-      <workItem from="1709106428598" duration="576000" />
+      <workItem from="1709106428598" duration="1772000" />
     </task>
     <task id="LOCAL-00097" summary="1st commit">
       <created>1686815468362</created>
@@ -460,7 +459,7 @@
       <option name="project" value="LOCAL" />
       <updated>1686836627350</updated>
     </task>
-    <option name="localTasksCounter" value="152" />
+    <option name="localTasksCounter" value="155" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -483,6 +482,8 @@
     <MESSAGE value="1" />
     <MESSAGE value="add empty directory ./data" />
     <MESSAGE value="implement &quot;scan QR to join session&quot;" />
-    <option name="LAST_COMMIT_MESSAGE" value="implement &quot;scan QR to join session&quot;" />
+    <MESSAGE value="feat: copy link of file" />
+    <MESSAGE value="feat: button to delete everything in this session immediately" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: button to delete everything in this session immediately" />
   </component>
 </project>

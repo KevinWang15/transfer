@@ -14,9 +14,14 @@
     text-align: center;
     font-size: 12px;
     position: absolute;
-    top: -20px;
+    top: -40px;
     left: 0;
     pointer-events: none;
+    user-select: none;
+
+    a {
+      pointer-events: all;
+    }
   }
 
   &.container {

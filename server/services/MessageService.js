@@ -57,11 +57,23 @@ function listMessagesBySessionId(sessionId) {
   });
 }
 
+function clearMessagesBySessionId(sessionId) {
+  return (async () => {
+    await MessageService.autoPrune(sessionId, { pruneAllImmediately: true });
+    return {};
+  })();
+}
+
 class MessageService {
-  static async autoPrune(sessionId) {
+  static async autoPrune(
+    sessionId,
+    { pruneAllImmediately } = { pruneAllImmediately: false }
+  ) {
     const messages = await listMessagesBySessionId(sessionId);
 
-    const messagesToDelete = calcMessagesToDelete(messages);
+    const messagesToDelete = pruneAllImmediately
+      ? messages.length
+      : calcMessagesToDelete(messages);
     if (messagesToDelete <= 0) {
       return;
     }
@@ -95,7 +107,7 @@ function startPeriodicAutoPrune() {
 }
 
 export default MessageService;
-export { listMessagesBySessionId };
+export { listMessagesBySessionId, clearMessagesBySessionId };
 export { listAllMessages };
 export { deleteMessageById };
 export { startPeriodicAutoPrune };

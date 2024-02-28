@@ -12,6 +12,7 @@ import "./database.js";
 import Message from "./models/message.js";
 import multer from "multer";
 import MessageService, {
+  clearMessagesBySessionId,
   listMessagesBySessionId,
   startPeriodicAutoPrune,
 } from "./services/MessageService.js";
@@ -25,6 +26,10 @@ app.use(cors());
 
 app.get("/sessions/:id/history", async (req, res) => {
   res.send(await listMessagesBySessionId(req.params.id));
+});
+
+app.get("/sessions/:id/clear_messages", async (req, res) => {
+  res.send(await clearMessagesBySessionId(req.params.id));
 });
 
 app.get("/serverside-config", async (req, res) => {

@@ -40,6 +40,21 @@ class Session extends React.Component {
     document.body.removeChild(input);
   };
 
+  async deleteEverythingInThisSession() {
+    if (
+      // eslint-disable-next-line no-restricted-globals
+      !confirm(
+        "Are you sure you want to delete everything in this session? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    await ApiClient.deleteEverythingInSession(this.props.router.params.id);
+    toast("deleted");
+    this.setState({ messages: [] });
+  }
+
   async uploadFiles(files) {
     for (let inputFile of files) {
       const uploadFileResp = await ApiClient.uploadAttachment(inputFile);
@@ -156,7 +171,13 @@ class Session extends React.Component {
                   {this.state.serversideConfig.messagesToKeep.maxCount} messages
                   within a{" "}
                   {this.state.serversideConfig.messagesToKeep.ttl / 86400}-day
-                  window are preserved
+                  window are preserved <br />
+                  <a
+                    href="#"
+                    onClick={() => this.deleteEverythingInThisSession()}
+                  >
+                    Delete everything in this session immediately
+                  </a>
                 </div>
               )}
               <div className="col flex-column flex-grow-0">

@@ -43,6 +43,11 @@ export default class ApiClient {
     NProgress.done();
     return await resp.json();
   }
+
+  static async deleteEverythingInSession(id) {
+    const resp = await fetch(`sessions/${id}/clear_messages`);
+    return await resp.json();
+  }
 }
 
 export { API_BASE, WEBSOCKET_BASE };
