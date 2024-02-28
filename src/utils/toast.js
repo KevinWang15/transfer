@@ -4,6 +4,7 @@ function toast(message, { duration = 1000 } = {}) {
   Toastify({
     text: message,
     duration,
+    close: true,
   }).showToast();
 }
 
