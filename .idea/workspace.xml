@@ -8,8 +8,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="70bdf409-dd43-4fde-889a-fdcdc2cbd105" name="Changes" comment="feat: curl to upload files / send messages">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/pages/Session.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/Session.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/apiclient/apiClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/apiclient/apiClient.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -114,7 +113,7 @@
       <workItem from="1694172839255" duration="4595000" />
       <workItem from="1694179606476" duration="583000" />
       <workItem from="1694250589423" duration="6000" />
-      <workItem from="1709106428598" duration="7400000" />
+      <workItem from="1709106428598" duration="7938000" />
     </task>
     <task id="LOCAL-00097" summary="1st commit">
       <created>1686815468362</created>
@@ -459,7 +458,7 @@
       <option name="project" value="LOCAL" />
       <updated>1686836627350</updated>
     </task>
-    <option name="localTasksCounter" value="171" />
+    <option name="localTasksCounter" value="172" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

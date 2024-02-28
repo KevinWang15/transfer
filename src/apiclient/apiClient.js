@@ -3,7 +3,7 @@ import NProgress from "nprogress";
 const API_BASE =
   window.location.origin === "http://localhost:3000"
     ? "http://localhost:6611/"
-    : "/";
+    : window.origin + "/";
 const WEBSOCKET_BASE =
   window.location.origin === "http://localhost:3000"
     ? "http://localhost:6611/"
