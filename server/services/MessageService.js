@@ -2,6 +2,7 @@ import fs from "fs";
 import { db } from "../database.js";
 import Message from "../models/message.js";
 import config from "../config.js";
+import { NEW_MESSAGE } from "@transfer/api/consts/socketEvents.js";
 
 function calcMessagesToDelete(messages) {
   const byMaxCount = messages.length - config.messagesToKeep.maxCount;
@@ -65,6 +66,14 @@ function clearMessagesBySessionId(sessionId) {
 }
 
 class MessageService {
+  static async addMessage(message, { sessionId, io }) {
+    message.id = await message.save();
+    MessageService.autoPrune(sessionId);
+
+    io.to(sessionId).emit(NEW_MESSAGE, message);
+    return message;
+  }
+
   static async autoPrune(
     sessionId,
     { pruneAllImmediately } = { pruneAllImmediately: false }

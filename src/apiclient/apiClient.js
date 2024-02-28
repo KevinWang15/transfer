@@ -24,11 +24,13 @@ export default class ApiClient {
     return await resp.json();
   }
 
-  static async uploadAttachment(file) {
+  static async uploadAttachment(file, { name, sessionId }) {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("name", name);
+    formData.append("sessionId", sessionId);
     NProgress.start();
-    const resp = await fetch("upload", {
+    const resp = await fetch("file", {
       method: "POST",
       body: formData,
       signal: new AbortController().signal,
@@ -47,6 +49,18 @@ export default class ApiClient {
   static async deleteEverythingInSession(id) {
     const resp = await fetch(`sessions/${id}/clear_messages`);
     return await resp.json();
+  }
+
+  static async sendText(text, { sessionId }) {
+    const formData = new FormData();
+    formData.append("text", text);
+    formData.append("sessionId", sessionId);
+    const resp = await fetch("text", {
+      method: "POST",
+      body: formData,
+    });
+
+    await resp.json();
   }
 }
 

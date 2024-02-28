@@ -7,9 +7,8 @@
     <option name="rewriteBookmarkType" value="true" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="70bdf409-dd43-4fde-889a-fdcdc2cbd105" name="Changes" comment="feat: button to delete everything in this session immediately">
+    <list default="true" id="70bdf409-dd43-4fde-889a-fdcdc2cbd105" name="Changes" comment="feat: curl to upload files / send messages">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/server/services/MessageService.js" beforeDir="false" afterPath="$PROJECT_DIR$/server/services/MessageService.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/pages/Session.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/pages/Session.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -73,6 +72,7 @@
       <recent name="$PROJECT_DIR$/src/pages" />
     </key>
     <key name="es6.move.members.recent.items">
+      <recent name="$PROJECT_DIR$/src/utils/utils.js" />
       <recent name="$PROJECT_DIR$/server/services/MessageService.js" />
       <recent name="$PROJECT_DIR$/src/utils/date.js" />
     </key>
@@ -114,7 +114,7 @@
       <workItem from="1694172839255" duration="4595000" />
       <workItem from="1694179606476" duration="583000" />
       <workItem from="1694250589423" duration="6000" />
-      <workItem from="1709106428598" duration="1772000" />
+      <workItem from="1709106428598" duration="7400000" />
     </task>
     <task id="LOCAL-00097" summary="1st commit">
       <created>1686815468362</created>
@@ -459,7 +459,7 @@
       <option name="project" value="LOCAL" />
       <updated>1686836627350</updated>
     </task>
-    <option name="localTasksCounter" value="155" />
+    <option name="localTasksCounter" value="171" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -484,6 +484,7 @@
     <MESSAGE value="implement &quot;scan QR to join session&quot;" />
     <MESSAGE value="feat: copy link of file" />
     <MESSAGE value="feat: button to delete everything in this session immediately" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: button to delete everything in this session immediately" />
+    <MESSAGE value="feat: curl to upload files / send messages" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: curl to upload files / send messages" />
   </component>
 </project>

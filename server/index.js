@@ -37,16 +37,49 @@ app.get("/serverside-config", async (req, res) => {
 });
 
 app.post(
-  "/upload",
+  "/file",
   multer({ dest: "data/file-uploads/" }).single("file"),
   async (req, res) => {
     if (req.file) {
-      res.json({ success: true, filename: req.file.filename });
+      const newMessage = new Message({
+        session_id: req.body.sessionId,
+        data: {
+          type: "file",
+          filename: req.body.name || req.file.originalname,
+          access_key: req.file.filename,
+        },
+        created_at: +new Date(),
+      });
+
+      await MessageService.addMessage(newMessage, {
+        sessionId: req.body.sessionId,
+        io,
+      });
+
+      res.json({ success: true });
     } else {
       res.json({ success: false, message: "No file was uploaded." });
     }
   }
 );
+
+app.post("/text", multer({}).any(), async (req, res) => {
+  const newMessage = new Message({
+    session_id: req.body.sessionId,
+    data: {
+      type: "text",
+      text: req.body.text,
+    },
+    created_at: +new Date(),
+  });
+
+  await MessageService.addMessage(newMessage, {
+    sessionId: req.body.sessionId,
+    io,
+  });
+
+  res.json({ success: true });
+});
 
 app.get("/attachments/:access_key", (req, res) => {
   const fileName = req.query.fileName;
@@ -75,21 +108,6 @@ const io = new SocketIOServer(httpServer, {
 io.on("connection", (socket) => {
   const sessionId = getSessionIdFromSocketHandshake(socket);
   socket.join(sessionId);
-
-  socket.on(POST_MESSAGE, async (payload) => {
-    const sessionId = getSessionIdFromSocketHandshake(socket);
-    const message = new Message({
-      session_id: sessionId,
-      data: payload,
-      created_at: +new Date(),
-    });
-
-    message.id = await message.save();
-
-    MessageService.autoPrune(sessionId);
-
-    io.to(sessionId).emit(NEW_MESSAGE, message);
-  });
 });
 
 startPeriodicAutoPrune();

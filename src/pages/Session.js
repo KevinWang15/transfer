@@ -1,7 +1,7 @@
 import React from "react";
 import withRouter from "../utils/withRouter.js";
 import { io } from "socket.io-client";
-import ApiClient, { WEBSOCKET_BASE } from "../apiclient/apiClient.js";
+import ApiClient, { API_BASE, WEBSOCKET_BASE } from "../apiclient/apiClient.js";
 import {
   NEW_MESSAGE,
   POST_MESSAGE,
@@ -11,12 +11,16 @@ import "./Session.scss";
 import Message from "../components/Message.js";
 import { IonIcon } from "@ionic/react";
 import {
+  codeSlashSharp,
   documentOutline,
   paperPlaneOutline,
   qrCodeSharp,
 } from "ionicons/icons/index.js";
 import QRCode from "qrcode";
 import sweetalert2 from "sweetalert2";
+import copy from "copy-to-clipboard";
+import { createRoot } from "react-dom/client";
+import { stripTrailingSlash } from "../utils/utils.js";
 
 class Session extends React.Component {
   state = {
@@ -57,24 +61,19 @@ class Session extends React.Component {
 
   async uploadFiles(files) {
     for (let inputFile of files) {
-      const uploadFileResp = await ApiClient.uploadAttachment(inputFile);
-      if (uploadFileResp.success) {
-        this.socketOps.postMessage({
-          type: "file",
-          filename: inputFile.name,
-          access_key: uploadFileResp.filename,
-        });
-      }
+      await ApiClient.uploadAttachment(inputFile, {
+        name: inputFile.name,
+        sessionId: this.props.router.params.id,
+      });
     }
   }
 
-  sendTextMessage = () => {
+  sendTextMessage = async () => {
     if (!this.state.textboxText) {
       return;
     }
-    this.socketOps.postMessage({
-      type: "text",
-      text: this.state.textboxText,
+    await ApiClient.sendText(this.state.textboxText, {
+      sessionId: this.props.router.params.id,
     });
     this.setState({ textboxText: "" });
   };
@@ -144,6 +143,10 @@ class Session extends React.Component {
           <nav className="navbar navbar-expand-md navbar-dark fixed-top bg-dark justify-content-between">
             <span className={"title"}>{this.props.router.params.id}</span>
             <span className={"button"}>
+              <IonIcon
+                onClick={() => this.displayCurlCmd()}
+                icon={codeSlashSharp}
+              ></IonIcon>
               <IonIcon
                 onClick={() => this.displayQRCode()}
                 icon={qrCodeSharp}
@@ -263,6 +266,52 @@ class Session extends React.Component {
       console.error("Error generating QR code:", error);
       return null;
     }
+  }
+
+  async displayCurlCmd() {
+    const swalContent = document.createElement("div");
+    const sendTextCurl = `curl -X POST -F "text=your-text-here" -F "sessionId=${
+      this.props.router.params.id
+    }" ${stripTrailingSlash(API_BASE)}/text`;
+    const sendFileCurl = `curl -X POST -F "file=@path-to-your-file" -F "sessionId=${
+      this.props.router.params.id
+    }" ${stripTrailingSlash(API_BASE)}/file`;
+
+    let reactRoot;
+    sweetalert2.fire({
+      title: swalContent,
+      didOpen: () => {
+        reactRoot = createRoot(swalContent);
+        reactRoot.render(
+          <div className="curl-commands">
+            <p>
+              Send messages to this session using the following curl command:
+            </p>
+            <pre
+              onClick={() => {
+                copy(sendTextCurl);
+                toast("Copied to clipboard");
+              }}
+            >
+              {sendTextCurl}
+            </pre>
+            <hr />
+            <p>Send a file to this session using the following curl command:</p>
+            <pre
+              onClick={() => {
+                copy(sendFileCurl);
+                toast("Copied to clipboard");
+              }}
+            >
+              {sendFileCurl}
+            </pre>
+          </div>
+        );
+      },
+      willClose: () => {
+        reactRoot.unmount();
+      },
+    });
   }
 
   async displayQRCode() {
