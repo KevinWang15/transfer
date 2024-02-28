@@ -12,14 +12,27 @@
     border-radius: 5px;
     margin-bottom: 10px;
     padding: 10px;
+    position: relative;
   }
 
-  .file-icon {
+  .file-icon, .link-icon {
     margin-left: 2px;
     margin-right: 8px;
     opacity: 0.3;
     position: relative;
     top: 1px;
+  }
+
+  .link-icon {
+    position: absolute;
+    right: 6px;
+    top: 10px;
+    opacity: 0.4;
+    zoom: 1.2;
+
+    &:hover {
+      opacity: 1;
+    }
   }
 
   position: relative;

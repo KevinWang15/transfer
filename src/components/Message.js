@@ -1,6 +1,6 @@
 import React from "react";
 import { IonIcon } from "@ionic/react";
-import { documentOutline } from "ionicons/icons/index.js";
+import { documentOutline, linkOutline } from "ionicons/icons/index.js";
 import copy from "copy-to-clipboard";
 import toast from "../utils/toast.js";
 import { API_BASE } from "../apiclient/apiClient.js";
@@ -52,14 +52,13 @@ class TextMessage extends React.Component {
 
 class FileMessage extends React.Component {
   render() {
+    const url = `${API_BASE}attachments/${
+      this.props.message.data.access_key
+    }?fileName=${encodeURIComponent(this.props.message.data.filename)}`;
     return (
       <BaseMessage
         onClick={() => {
-          window.open(
-            `${API_BASE}attachments/${
-              this.props.message.data.access_key
-            }?fileName=${encodeURIComponent(this.props.message.data.filename)}`
-          );
+          window.open(url);
         }}
         {...this.props}
         renderContent={() => (
@@ -72,6 +71,15 @@ class FileMessage extends React.Component {
           >
             <IonIcon className={"file-icon"} icon={documentOutline}></IonIcon>
             {this.props.message.data.filename}
+            <IonIcon
+              className={"link-icon"}
+              icon={linkOutline}
+              onClick={(e) => {
+                e.stopPropagation();
+                copy(url);
+                toast("Link copied to clipboard");
+              }}
+            ></IonIcon>
           </div>
         )}
       />
