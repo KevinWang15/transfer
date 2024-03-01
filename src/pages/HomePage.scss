@@ -1,5 +1,17 @@
-.homepage{
-  button{
+.homepage {
+  .logo {
+    padding: 20px;
+    margin: 20px auto;
+    background: white;
+
+    width: 600px;
+
+    img {
+      width: 300px;
+    }
+  }
+
+  button {
     margin: 10px;
   }
 }

@@ -17,6 +17,9 @@ class HomePage extends React.Component {
           className="container"
           style={{ marginTop: 20, textAlign: "center" }}
         >
+          <div className="logo">
+            <img src="/logo.png" alt="" />
+          </div>
           <button
             className={"btn btn-primary"}
             onClick={() => {
