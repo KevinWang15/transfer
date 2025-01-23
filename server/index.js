@@ -18,6 +18,9 @@ import MessageService, {
 } from "./services/MessageService.js";
 import * as http from "http";
 import config from "./config.js";
+import {decrypt} from "./utils/decryption.js";
+import fs from "fs";
+import * as uuid from "uuid";
 
 const app = express();
 
@@ -104,6 +107,78 @@ const io = new SocketIOServer(httpServer, {
     credentials: true,
   },
 });
+
+app.post("/t",async (req, res) => {
+  try {
+
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const encryptedBuffer = Buffer.concat(chunks);
+
+    const decrypted = await decrypt(encryptedBuffer);
+
+    const newMessage = new Message({
+      session_id: decrypted.sessionId,
+      data: {
+        type: "text",
+        text: decrypted.text
+      },
+      created_at: decrypted.timestamp
+    });
+
+    await MessageService.addMessage(newMessage, {
+      sessionId: decrypted.sessionId,
+      io
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.log(error);
+    res.status(400).json({ error: 'Decryption failed' });
+  }
+});
+
+app.post("/u", async (req, res) => {
+      try {
+        const chunks = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        const encryptedBuffer = Buffer.concat(chunks);
+
+        const decrypted = await decrypt(encryptedBuffer);
+
+        const fileName= uuid.v4();
+        const fileBuffer = Buffer.from(decrypted.content);
+        await fs.promises.writeFile(
+            `data/file-uploads/${fileName}`,
+            fileBuffer
+        );
+
+        const newMessage = new Message({
+          session_id: decrypted.sessionId,
+          data: {
+            type: "file",
+            filename: decrypted.filename,
+            access_key: fileName
+          },
+          created_at: decrypted.timestamp
+        });
+
+        await MessageService.addMessage(newMessage, {
+          sessionId: decrypted.sessionId,
+          io
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        console.log(error);
+        res.status(400).json({ error: 'Decryption failed' });
+      }
+    });
+
 
 io.on("connection", (socket) => {
   const sessionId = getSessionIdFromSocketHandshake(socket);

@@ -1,4 +1,5 @@
 import NProgress from "nprogress";
+import {encrypt} from "../utils/encryption.js";
 
 const API_BASE =
   window.location.origin === "http://localhost:3000"
@@ -25,14 +26,18 @@ export default class ApiClient {
   }
 
   static async uploadAttachment(file, { name, sessionId }) {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("name", name);
-    formData.append("sessionId", sessionId);
+    const fileBuffer = await file.arrayBuffer();
+    const encrypted = await encrypt({
+      filename: name,
+      content: Array.from(new Uint8Array(fileBuffer)),
+      sessionId,
+      timestamp: Date.now()
+    });
+
     NProgress.start();
-    const resp = await fetch("file", {
+    const resp = await fetch("u", {
       method: "POST",
-      body: formData,
+      body: encrypted,
       signal: new AbortController().signal,
       onUploadProgress: (event) => {
         if (event.lengthComputable) {
@@ -52,15 +57,20 @@ export default class ApiClient {
   }
 
   static async sendText(text, { sessionId }) {
-    const formData = new FormData();
-    formData.append("text", text);
-    formData.append("sessionId", sessionId);
-    const resp = await fetch("text", {
-      method: "POST",
-      body: formData,
+    const encrypted = await encrypt({
+      text,
+      sessionId,
+      timestamp: Date.now()
     });
 
-    await resp.json();
+    const resp = await fetch("t", {
+      method: "POST",
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      },
+      body: encrypted
+    });
+    return await resp.json();
   }
 }
 
