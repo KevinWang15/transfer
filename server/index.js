@@ -191,6 +191,7 @@ function getSessionIdFromSocketHandshake(socket) {
   return socket.handshake.headers["sessionid"];
 }
 
-httpServer.listen(6611, () => {
-  console.log("server listening on port 6611");
+const port = Number(process.env.PORT) || 6611;
+httpServer.listen(port, () => {
+  console.log(`server listening on port ${port}`);
 });
