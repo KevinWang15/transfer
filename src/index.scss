@@ -31,6 +31,8 @@ code {
 
   .swal2-image {
     border-radius: 6px;
+    max-height: 60vh;
+    object-fit: contain;
   }
 
 }

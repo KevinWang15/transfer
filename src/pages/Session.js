@@ -68,6 +68,41 @@ class Session extends React.Component {
     }
   }
 
+  handlePaste = async (event) => {
+    const imageItem = Array.from(event.clipboardData?.items || []).find(
+      (item) => item.kind === "file" && item.type.startsWith("image/")
+    );
+
+    if (!imageItem) {
+      return;
+    }
+
+    const image = imageItem.getAsFile();
+    if (!image) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const previewUrl = URL.createObjectURL(image);
+    try {
+      const result = await sweetalert2.fire({
+        title: "Send this image?",
+        imageUrl: previewUrl,
+        imageAlt: "Clipboard image preview",
+        showCancelButton: true,
+        confirmButtonText: "Send image",
+        cancelButtonText: "Cancel",
+      });
+
+      if (result.isConfirmed) {
+        await this.uploadFiles([image]);
+      }
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+    }
+  };
+
   sendTextMessage = async () => {
     if (!this.state.textboxText) {
       return;
@@ -197,6 +232,7 @@ class Session extends React.Component {
                   rows="2"
                   style={{ resize: "none" }}
                   value={this.state.textboxText}
+                  onPaste={this.handlePaste}
                   onKeyDown={(e) => {
                     if (e.keyCode === 13 && e.metaKey) {
                       this.sendTextMessage();
