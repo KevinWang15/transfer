@@ -2,8 +2,11 @@ FROM node:18-alpine
 
 RUN mkdir /app
 WORKDIR /app
-ADD ./package.json /app
-RUN npm install
+ADD ./package.json ./package-lock.json /app/
+RUN apk add --no-cache libstdc++ \
+    && apk add --no-cache --virtual .build-deps python3 make g++ \
+    && npm ci \
+    && apk del .build-deps
 
 ADD . /app
 

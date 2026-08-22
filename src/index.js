@@ -18,9 +18,10 @@ NProgress.configure({ showSpinner: false });
 
 function DocumentTitle({ title }) {
   const routeParams = useParams();
+  const nextTitle = title(routeParams);
   useEffect(() => {
-    document.title = title(routeParams);
-  }, [title]); // Only re-run the effect if the title prop changes
+    document.title = nextTitle;
+  }, [nextTitle]);
 
   return null; // This component doesn't render anything
 }

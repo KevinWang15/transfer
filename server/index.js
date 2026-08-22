@@ -18,9 +18,9 @@ import MessageService, {
 } from "./services/MessageService.js";
 import * as http from "http";
 import config from "./config.js";
-import {decrypt} from "./utils/decryption.js";
-import fs from "fs";
-import * as uuid from "uuid";
+import { decrypt } from "./utils/decryption.js";
+import createUploadRouter from "./routes/uploadRoutes.js";
+import { startPeriodicUploadCleanup } from "./services/UploadService.js";
 
 const app = express();
 
@@ -36,7 +36,14 @@ app.get("/sessions/:id/clear_messages", async (req, res) => {
 });
 
 app.get("/serverside-config", async (req, res) => {
-  res.send({ messagesToKeep: config.messagesToKeep });
+  res.send({
+    messagesToKeep: config.messagesToKeep,
+    uploads: {
+      chunkSize: config.uploads.chunkSize,
+      concurrency: config.uploads.concurrency,
+      staleTtl: config.uploads.staleTtl,
+    },
+  });
 });
 
 app.post(
@@ -108,9 +115,8 @@ const io = new SocketIOServer(httpServer, {
   },
 });
 
-app.post("/t",async (req, res) => {
+app.post("/t", async (req, res) => {
   try {
-
     const chunks = [];
     for await (const chunk of req) {
       chunks.push(chunk);
@@ -123,62 +129,24 @@ app.post("/t",async (req, res) => {
       session_id: decrypted.sessionId,
       data: {
         type: "text",
-        text: decrypted.text
+        text: decrypted.text,
       },
-      created_at: decrypted.timestamp
+      created_at: decrypted.timestamp,
     });
 
     await MessageService.addMessage(newMessage, {
       sessionId: decrypted.sessionId,
-      io
+      io,
     });
 
     res.json({ success: true });
   } catch (error) {
     console.log(error);
-    res.status(400).json({ error: 'Decryption failed' });
+    res.status(400).json({ error: "Decryption failed" });
   }
 });
 
-app.post("/u", async (req, res) => {
-      try {
-        const chunks = [];
-        for await (const chunk of req) {
-          chunks.push(chunk);
-        }
-        const encryptedBuffer = Buffer.concat(chunks);
-
-        const decrypted = await decrypt(encryptedBuffer);
-
-        const fileName= uuid.v4();
-        const fileBuffer = Buffer.from(decrypted.content);
-        await fs.promises.writeFile(
-            `data/file-uploads/${fileName}`,
-            fileBuffer
-        );
-
-        const newMessage = new Message({
-          session_id: decrypted.sessionId,
-          data: {
-            type: "file",
-            filename: decrypted.filename,
-            access_key: fileName
-          },
-          created_at: decrypted.timestamp
-        });
-
-        await MessageService.addMessage(newMessage, {
-          sessionId: decrypted.sessionId,
-          io
-        });
-
-        res.json({ success: true });
-      } catch (error) {
-        console.log(error);
-        res.status(400).json({ error: 'Decryption failed' });
-      }
-    });
-
+app.use("/u", createUploadRouter({ io }));
 
 io.on("connection", (socket) => {
   const sessionId = getSessionIdFromSocketHandshake(socket);
@@ -186,6 +154,7 @@ io.on("connection", (socket) => {
 });
 
 startPeriodicAutoPrune();
+startPeriodicUploadCleanup();
 
 function getSessionIdFromSocketHandshake(socket) {
   return socket.handshake.headers["sessionid"];

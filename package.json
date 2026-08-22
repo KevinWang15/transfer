@@ -31,6 +31,7 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "test": "node --test --test-concurrency=1",
     "start-frontend": "react-scripts start",
     "build-frontend": "react-scripts build",
     "dev": "./rundev.sh",

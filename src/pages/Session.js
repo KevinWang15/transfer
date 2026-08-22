@@ -61,10 +61,15 @@ class Session extends React.Component {
 
   async uploadFiles(files) {
     for (let inputFile of files) {
-      await ApiClient.uploadAttachment(inputFile, {
-        name: inputFile.name,
-        sessionId: this.props.router.params.id,
-      });
+      try {
+        await ApiClient.uploadAttachment(inputFile, {
+          name: inputFile.name,
+          sessionId: this.props.router.params.id,
+        });
+      } catch (error) {
+        console.error("file upload failed", error);
+        toast(`Upload failed: ${inputFile.name} (${error.message})`);
+      }
     }
   }
 
@@ -146,9 +151,7 @@ class Session extends React.Component {
     },
   };
 
-  removeDragDropListener = () => {
-    throw "why??";
-  };
+  removeDragDropListener = () => {};
 
   componentDidMount() {
     ApiClient.getServerSideConfig().then((serversideConfig) => {
@@ -210,12 +213,13 @@ class Session extends React.Component {
                   within a{" "}
                   {this.state.serversideConfig.messagesToKeep.ttl / 86400}-day
                   window are preserved <br />
-                  <a
-                    href="#"
+                  <button
+                    type="button"
+                    className="btn btn-link p-0"
                     onClick={() => this.deleteEverythingInThisSession()}
                   >
                     Delete everything in this session immediately
-                  </a>
+                  </button>
                 </div>
               )}
               <div className="col flex-column flex-grow-0">

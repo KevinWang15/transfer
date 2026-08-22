@@ -15,19 +15,23 @@ function calcMessagesToDelete(messages) {
 }
 
 function deleteMessageById(id) {
-  db.run(
-    `DELETE
-         FROM messages
-         WHERE id = ?`,
-    id
-  );
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE
+           FROM messages
+           WHERE id = ?`,
+      id,
+      (error) => (error ? reject(error) : resolve())
+    );
+  });
 }
 
 function listAllMessages() {
   return new Promise((resolve, reject) => {
     db.all(
       `select *
-             from messages;`,
+             from messages
+             order by created_at asc, id asc;`,
       [],
       (err, rows) => {
         if (err) {
@@ -45,7 +49,8 @@ function listMessagesBySessionId(sessionId) {
     db.all(
       `select *
              from messages
-             where session_id = ?;`,
+             where session_id = ?
+             order by created_at asc, id asc;`,
       [sessionId],
       (err, rows) => {
         if (err) {
@@ -68,7 +73,11 @@ function clearMessagesBySessionId(sessionId) {
 class MessageService {
   static async addMessage(message, { sessionId, io }) {
     message.id = await message.save();
-    MessageService.autoPrune(sessionId);
+    try {
+      await MessageService.autoPrune(sessionId);
+    } catch (error) {
+      console.error("failed to prune messages", error);
+    }
 
     io.to(sessionId).emit(NEW_MESSAGE, message);
     return message;
@@ -91,28 +100,50 @@ class MessageService {
       const messageData = JSON.parse(message.data);
       if (messageData.type === "file") {
         try {
-          fs.unlinkSync(`./data/file-uploads/${messageData.access_key}`);
+          await fs.promises.unlink(
+            `./data/file-uploads/${messageData.access_key}`
+          );
         } catch (ex) {
-          console.error("failed to delete file", messageData.access_key, ex);
+          if (ex.code !== "ENOENT") {
+            console.error("failed to delete file", messageData.access_key, ex);
+          }
         }
       }
-      deleteMessageById(message.id);
+      await deleteMessageById(message.id);
     }
   }
 }
 
 function startPeriodicAutoPrune() {
-  setInterval(async () => {
-    const allMessages = await listAllMessages();
-
-    const sessionIds = [
-      ...new Set(Array.from(allMessages).map((m) => m.session_id)),
-    ];
-
-    for (let sessionId of sessionIds) {
-      MessageService.autoPrune(sessionId);
+  let pruning = false;
+  const runPrune = async () => {
+    if (pruning) {
+      return;
     }
-  }, 1000);
+    pruning = true;
+    try {
+      const allMessages = await listAllMessages();
+
+      const sessionIds = [
+        ...new Set(Array.from(allMessages).map((m) => m.session_id)),
+      ];
+
+      for (let sessionId of sessionIds) {
+        await MessageService.autoPrune(sessionId);
+      }
+    } catch (error) {
+      console.error("failed to periodically prune messages", error);
+    } finally {
+      pruning = false;
+    }
+  };
+
+  const timer = setInterval(
+    runPrune,
+    config.messagesToKeep.pruneInterval * 1000
+  );
+  timer.unref();
+  return timer;
 }
 
 export default MessageService;
