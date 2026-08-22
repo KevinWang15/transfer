@@ -1,4 +1,3 @@
-import NProgress from "nprogress";
 import {
   UPLOAD_OPERATIONS,
   UPLOAD_PROTOCOL_VERSION,
@@ -10,6 +9,7 @@ import {
   decodeUploadResponse,
   encodeUploadRequest,
 } from "../utils/uploadProtocol.js";
+import { UploadProgressTracker } from "../utils/uploadProgress.js";
 
 const API_BASE =
   window.location.origin === "http://localhost:3000"
@@ -275,28 +275,29 @@ export default class ApiClient {
     return serverConfigPromise;
   }
 
-  static async uploadAttachment(file, { name, sessionId }) {
-    const serverConfig = await ApiClient.getServerSideConfig();
-    const configuredChunkSize =
-      serverConfig.uploads?.chunkSize || DEFAULT_CHUNK_SIZE;
-    const selectedChunkSize = paddedChunkSize(file.size, configuredChunkSize);
-    const concurrency = Math.max(
-      1,
-      Math.min(8, serverConfig.uploads?.concurrency || DEFAULT_CONCURRENCY)
-    );
-    const storageKey = resumeStorageKey(file, sessionId, name);
-    let record = loadResumeRecord(storageKey);
-    if (!validResumeRecord(record, file, { name, sessionId })) {
-      record = newResumeRecord(file, {
-        name,
-        sessionId,
-        chunkSize: selectedChunkSize,
-      });
-      saveResumeRecord(storageKey, record);
-    }
-
-    NProgress.start();
+  static async uploadAttachment(file, { name, sessionId, onProgress }) {
+    const progress = new UploadProgressTracker(file.size, onProgress);
+    progress.preparing();
     try {
+      const serverConfig = await ApiClient.getServerSideConfig();
+      const configuredChunkSize =
+        serverConfig.uploads?.chunkSize || DEFAULT_CHUNK_SIZE;
+      const selectedChunkSize = paddedChunkSize(file.size, configuredChunkSize);
+      const concurrency = Math.max(
+        1,
+        Math.min(8, serverConfig.uploads?.concurrency || DEFAULT_CONCURRENCY)
+      );
+      const storageKey = resumeStorageKey(file, sessionId, name);
+      let record = loadResumeRecord(storageKey);
+      if (!validResumeRecord(record, file, { name, sessionId })) {
+        record = newResumeRecord(file, {
+          name,
+          sessionId,
+          chunkSize: selectedChunkSize,
+        });
+        saveResumeRecord(storageKey, record);
+      }
+
       let initialized;
       try {
         initialized = await uploadWithRetry(
@@ -334,6 +335,7 @@ export default class ApiClient {
 
       if (initialized.completed) {
         clearResumeRecord(storageKey);
+        progress.complete();
         return initialized;
       }
 
@@ -352,17 +354,33 @@ export default class ApiClient {
       }
 
       const partialBytes = new Map();
+      let transmittedBytes = 0;
       const updateProgress = () => {
         const inFlightBytes = Array.from(partialBytes.values()).reduce(
           (total, value) => total + value,
           0
         );
-        const progress = file.size
-          ? (completedBytes + inFlightBytes) / file.size
-          : 1;
-        NProgress.set(Math.min(0.99, progress));
+        progress.update(completedBytes, inFlightBytes, transmittedBytes);
       };
-      updateProgress();
+      progress.start(completedBytes);
+
+      const trackChunkProgress = (chunkIndex, plaintextBytes) => {
+        let attemptBytes = 0;
+        return (fraction) => {
+          if (fraction === 0) {
+            attemptBytes = 0;
+          } else {
+            const nextAttemptBytes = plaintextBytes * fraction;
+            transmittedBytes += Math.max(0, nextAttemptBytes - attemptBytes);
+            attemptBytes = nextAttemptBytes;
+            partialBytes.set(
+              chunkIndex,
+              Math.max(partialBytes.get(chunkIndex) || 0, nextAttemptBytes)
+            );
+          }
+          updateProgress();
+        };
+      };
 
       let nextPending = 0;
       let uploadStopped = false;
@@ -388,10 +406,7 @@ export default class ApiClient {
                   plaintext,
                   record.chunkSize
                 ),
-              (fraction) => {
-                partialBytes.set(chunkIndex, plaintextBytes * fraction);
-                updateProgress();
-              }
+              trackChunkProgress(chunkIndex, plaintextBytes)
             );
             partialBytes.delete(chunkIndex);
             completedBytes += plaintextBytes;
@@ -415,6 +430,7 @@ export default class ApiClient {
         throw failedWorker.reason;
       }
 
+      progress.finalizing();
       const result = await uploadWithRetry(
         () =>
           createOpaqueUploadBody(
@@ -430,9 +446,11 @@ export default class ApiClient {
         () => {}
       );
       clearResumeRecord(storageKey);
+      progress.complete();
       return result;
-    } finally {
-      NProgress.done();
+    } catch (error) {
+      progress.failed();
+      throw error;
     }
   }
 

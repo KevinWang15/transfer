@@ -21,15 +21,18 @@ import sweetalert2 from "sweetalert2";
 import copy from "copy-to-clipboard";
 import { createRoot } from "react-dom/client";
 import { stripTrailingSlash } from "../utils/utils.js";
+import UploadProgress from "../components/UploadProgress.js";
 
 class Session extends React.Component {
   state = {
     messages: [],
     textboxText: "",
     serversideConfig: null,
+    uploadProgress: null,
   };
 
   socket = null;
+  uploadQueue = Promise.resolve();
 
   sendFile = () => {
     const input = document.createElement("input");
@@ -59,18 +62,50 @@ class Session extends React.Component {
     this.setState({ messages: [] });
   }
 
-  async uploadFiles(files) {
-    for (let inputFile of files) {
+  uploadFiles = (files) => {
+    const pendingFiles = Array.from(files || []);
+    const queuedUpload = this.uploadQueue.then(() =>
+      this.performUploads(pendingFiles)
+    );
+    this.uploadQueue = queuedUpload.catch(() => {});
+    return queuedUpload;
+  };
+
+  async performUploads(files) {
+    for (const [index, inputFile] of files.entries()) {
+      const fileDetails = {
+        filename: inputFile.name,
+        fileIndex: index + 1,
+        totalFiles: files.length,
+      };
+      this.setState({
+        uploadProgress: {
+          ...fileDetails,
+          phase: "preparing",
+          uploadedBytes: 0,
+          totalBytes: inputFile.size,
+          progress: 0,
+          speedBytesPerSecond: 0,
+          etaSeconds: null,
+        },
+      });
+
       try {
         await ApiClient.uploadAttachment(inputFile, {
           name: inputFile.name,
           sessionId: this.props.router.params.id,
+          onProgress: (uploadProgress) =>
+            this.setState({
+              uploadProgress: { ...fileDetails, ...uploadProgress },
+            }),
         });
       } catch (error) {
         console.error("file upload failed", error);
         toast(`Upload failed: ${inputFile.name} (${error.message})`);
       }
     }
+
+    this.setState({ uploadProgress: null });
   }
 
   handlePaste = async (event) => {
@@ -192,6 +227,8 @@ class Session extends React.Component {
             </span>
           </nav>
         </header>
+
+        <UploadProgress upload={this.state.uploadProgress} />
 
         <main className="session-main">
           <div className="container">

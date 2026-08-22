@@ -10,11 +10,6 @@ import {
 import HomePage from "./pages/HomePage.js";
 import Session from "./pages/Session.js";
 import "toastify-js/src/toastify.css";
-import NProgress from "nprogress";
-import "nprogress/nprogress.css";
-
-// configure nprogress
-NProgress.configure({ showSpinner: false });
 
 function DocumentTitle({ title }) {
   const routeParams = useParams();
