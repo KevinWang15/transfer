@@ -1,96 +1,45 @@
 import express from "express";
 
-import config from "../config.js";
 import {
   UploadError,
-  finalizeUpload,
-  initializeUpload,
-  storeChunk,
+  processOpaqueUploadRequest,
 } from "../services/UploadService.js";
-import { decrypt } from "../utils/decryption.js";
+import { encryptUploadResponse } from "../utils/encryption.js";
 
-async function readEncryptedMetadata(request) {
-  const maximum = config.uploads.maxMetadataBytes;
-  const contentLength = Number(request.headers["content-length"]);
-  if (Number.isFinite(contentLength) && contentLength > maximum) {
-    request.resume();
-    throw new UploadError(
-      413,
-      "METADATA_TOO_LARGE",
-      "Encrypted upload metadata is too large"
-    );
-  }
-
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of request) {
-    total += chunk.length;
-    if (total > maximum) {
-      throw new UploadError(
-        413,
-        "METADATA_TOO_LARGE",
-        "Encrypted upload metadata is too large"
-      );
-    }
-    chunks.push(chunk);
-  }
-
-  try {
-    return await decrypt(Buffer.concat(chunks, total));
-  } catch (error) {
-    throw new UploadError(
-      400,
-      "METADATA_DECRYPTION_FAILED",
-      "Upload metadata authentication or decryption failed"
-    );
-  }
-}
-
-function sendUploadError(response, error) {
-  const status = error instanceof UploadError ? error.status : 500;
-  if (status >= 500) {
-    console.error("upload request failed", error);
-  }
-  response.status(status).json({
-    success: false,
-    code: error.code || "UPLOAD_FAILED",
-    error: status >= 500 ? "Upload failed" : error.message,
-    ...(error.details ? { details: error.details } : {}),
-  });
+async function sendEncryptedResponse(response, value) {
+  response
+    .status(200)
+    .set({
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "no-store",
+    })
+    .send(await encryptUploadResponse(value));
 }
 
 export default function createUploadRouter({ io }) {
   const router = express.Router();
 
-  router.post("/init", async (request, response) => {
+  router.post("/", async (request, response) => {
     try {
-      response.json(
-        await initializeUpload(await readEncryptedMetadata(request))
-      );
+      const result = await processOpaqueUploadRequest(request, { io });
+      await sendEncryptedResponse(response, { ok: true, result });
     } catch (error) {
-      sendUploadError(response, error);
-    }
-  });
-
-  router.put("/:uploadId/:chunkIndex", async (request, response) => {
-    try {
-      const chunkIndex = Number(request.params.chunkIndex);
-      response.json(
-        await storeChunk(request.params.uploadId, chunkIndex, request)
-      );
-    } catch (error) {
-      sendUploadError(response, error);
-    }
-  });
-
-  router.post("/:uploadId/finalize", async (request, response) => {
-    try {
-      const metadata = await readEncryptedMetadata(request);
-      response.json(
-        await finalizeUpload(request.params.uploadId, metadata, { io })
-      );
-    } catch (error) {
-      sendUploadError(response, error);
+      if (!request.readableEnded && !request.destroyed) {
+        request.resume();
+      }
+      const status = error instanceof UploadError ? error.status : 500;
+      if (status >= 500) {
+        console.error("upload request failed", error);
+      }
+      await sendEncryptedResponse(response, {
+        ok: false,
+        error: {
+          status,
+          code: error.code || "UPLOAD_FAILED",
+          message: status >= 500 ? "Upload failed" : error.message,
+          ...(error.details ? { details: error.details } : {}),
+        },
+      });
     }
   });
 

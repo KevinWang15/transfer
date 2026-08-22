@@ -5,15 +5,24 @@ import { Transform } from "stream";
 import { pipeline } from "stream/promises";
 import * as uuid from "uuid";
 
+import {
+  UPLOAD_ENCRYPTION_OVERHEAD_BYTES,
+  UPLOAD_ENVELOPE_HEADER_BYTES,
+  UPLOAD_OPERATIONS,
+  UPLOAD_PROTOCOL_VERSION,
+  UPLOAD_REQUEST_ADDITIONAL_DATA,
+} from "@transfer/api/consts/uploadProtocol.js";
+
 import config from "../config.js";
 import Message from "../models/message.js";
-import { decryptBytes } from "../utils/decryption.js";
+import { getRawDecryptionKey } from "../utils/decryption.js";
 import MessageService, { listMessagesBySessionId } from "./MessageService.js";
 
 const uploadRoot = path.resolve("data/upload-chunks");
+const requestRoot = path.resolve("data/upload-requests");
 const fileRoot = path.resolve("data/file-uploads");
 const STAGING_PREFIX = ".upload-staging-";
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = UPLOAD_PROTOCOL_VERSION;
 const MAX_CHUNKS = 100000;
 const activeUploads = new Map();
 const initializations = new Map();
@@ -58,6 +67,7 @@ await ensureUploadDirectories();
 async function ensureUploadDirectories() {
   await Promise.all([
     fs.promises.mkdir(uploadRoot, { recursive: true }),
+    fs.promises.mkdir(requestRoot, { recursive: true }),
     fs.promises.mkdir(fileRoot, { recursive: true }),
   ]);
 }
@@ -73,10 +83,6 @@ function manifestPath(uploadId) {
 
 function partPath(uploadId, chunkIndex) {
   return path.join(uploadDirectory(uploadId), `${chunkIndex}.part`);
-}
-
-function chunkAdditionalData(uploadId, chunkIndex) {
-  return `transfer-upload-v${PROTOCOL_VERSION}:${uploadId}:${chunkIndex}`;
 }
 
 function assertUploadId(uploadId) {
@@ -239,6 +245,14 @@ async function listUploadedChunks(uploadId, manifest) {
   return uploaded.sort((left, right) => left - right);
 }
 
+function encodeUploadedChunkBitmap(uploadedChunks, totalChunks) {
+  const bitmap = Buffer.alloc(Math.ceil(totalChunks / 8));
+  for (const chunkIndex of uploadedChunks) {
+    bitmap[chunkIndex >> 3] |= 1 << (chunkIndex & 7);
+  }
+  return bitmap.toString("base64");
+}
+
 async function performInitialization(metadata) {
   const normalized = { ...comparableManifest(metadata), status: "uploading" };
   const directory = uploadDirectory(metadata.uploadId);
@@ -290,11 +304,14 @@ async function performInitialization(metadata) {
       return { success: true, completed: true, ...existing.result };
     }
 
+    const uploadedChunks = await listUploadedChunks(
+      metadata.uploadId,
+      existing
+    );
     return {
       success: true,
       completed: false,
-      uploadId: metadata.uploadId,
-      uploadedChunks: await listUploadedChunks(metadata.uploadId, existing),
+      uploaded: encodeUploadedChunkBitmap(uploadedChunks, existing.totalChunks),
     };
   });
 }
@@ -314,58 +331,184 @@ async function initializeUpload(metadata) {
   return initialization;
 }
 
-function byteLimitTransform(expectedBytes) {
+function byteLimitTransform(maximumBytes) {
   let received = 0;
   return new Transform({
     transform(chunk, encoding, callback) {
       received += chunk.length;
-      if (received > expectedBytes) {
+      if (received > maximumBytes) {
         callback(
           new UploadError(
             413,
-            "CHUNK_TOO_LARGE",
-            "Encrypted chunk is too large"
+            "OPAQUE_REQUEST_TOO_LARGE",
+            "Encrypted request is too large"
           )
         );
         return;
       }
       callback(null, chunk);
     },
-    flush(callback) {
-      if (received !== expectedBytes) {
-        callback(
-          new UploadError(
-            400,
-            "INVALID_ENCRYPTED_CHUNK_SIZE",
-            "Encrypted chunk has an unexpected size"
-          )
-        );
-        return;
-      }
-      callback();
-    },
   });
 }
 
-async function receiveRequestToFile(request, destination, expectedBytes) {
+async function receiveRequestToFile(request, destination, maximumBytes) {
   const contentLength = Number(request.headers["content-length"]);
-  if (Number.isFinite(contentLength) && contentLength !== expectedBytes) {
+  if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
     request.resume();
     throw new UploadError(
-      400,
-      "INVALID_ENCRYPTED_CHUNK_SIZE",
-      "Encrypted chunk has an unexpected size"
+      413,
+      "OPAQUE_REQUEST_TOO_LARGE",
+      "Encrypted request is too large"
     );
   }
 
   await pipeline(
     request,
-    byteLimitTransform(expectedBytes),
+    byteLimitTransform(maximumBytes),
     fs.createWriteStream(destination, { flags: "wx" })
   );
 }
 
-async function storeChunk(uploadId, chunkIndex, request) {
+class UploadEnvelopeDecoder extends Transform {
+  constructor() {
+    super();
+    this.prefix = [];
+    this.prefixBytes = 0;
+    this.header = null;
+  }
+
+  decodeHeader() {
+    const prefix = Buffer.concat(this.prefix, this.prefixBytes);
+    const headerBytes = prefix.readUInt32BE(0);
+    if (headerBytes === 0 || headerBytes > UPLOAD_ENVELOPE_HEADER_BYTES - 4) {
+      throw new UploadError(
+        400,
+        "INVALID_OPAQUE_REQUEST",
+        "Encrypted request metadata is malformed"
+      );
+    }
+    try {
+      this.header = JSON.parse(
+        prefix.subarray(4, 4 + headerBytes).toString("utf8")
+      );
+    } catch (error) {
+      throw new UploadError(
+        400,
+        "INVALID_OPAQUE_REQUEST",
+        "Encrypted request metadata is malformed"
+      );
+    }
+    this.prefix = [];
+  }
+
+  _transform(chunk, encoding, callback) {
+    try {
+      if (this.header) {
+        callback(null, chunk);
+        return;
+      }
+
+      const needed = UPLOAD_ENVELOPE_HEADER_BYTES - this.prefixBytes;
+      const prefixChunk = chunk.subarray(0, needed);
+      this.prefix.push(prefixChunk);
+      this.prefixBytes += prefixChunk.length;
+
+      if (this.prefixBytes === UPLOAD_ENVELOPE_HEADER_BYTES) {
+        this.decodeHeader();
+        callback(null, chunk.subarray(prefixChunk.length));
+        return;
+      }
+      callback();
+    } catch (error) {
+      callback(error);
+    }
+  }
+
+  _flush(callback) {
+    if (!this.header) {
+      callback(
+        new UploadError(
+          400,
+          "INVALID_OPAQUE_REQUEST",
+          "Encrypted request is incomplete"
+        )
+      );
+      return;
+    }
+    callback();
+  }
+}
+
+async function decryptEnvelopeFile(encryptedFile, payloadFile) {
+  const stat = await fs.promises.stat(encryptedFile);
+  if (
+    stat.size <
+    UPLOAD_ENCRYPTION_OVERHEAD_BYTES + UPLOAD_ENVELOPE_HEADER_BYTES
+  ) {
+    throw new UploadError(
+      400,
+      "INVALID_OPAQUE_REQUEST",
+      "Encrypted request is incomplete"
+    );
+  }
+
+  const handle = await fs.promises.open(encryptedFile, "r");
+  const iv = Buffer.alloc(16);
+  const authenticationTag = Buffer.alloc(16);
+  try {
+    await handle.read(iv, 0, iv.length, 0);
+    await handle.read(
+      authenticationTag,
+      0,
+      authenticationTag.length,
+      stat.size - authenticationTag.length
+    );
+  } finally {
+    await handle.close();
+  }
+
+  const key = await getRawDecryptionKey();
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAAD(Buffer.from(UPLOAD_REQUEST_ADDITIONAL_DATA));
+  decipher.setAuthTag(authenticationTag);
+  const envelope = new UploadEnvelopeDecoder();
+
+  try {
+    await pipeline(
+      fs.createReadStream(encryptedFile, {
+        start: iv.length,
+        end: stat.size - authenticationTag.length - 1,
+      }),
+      decipher,
+      envelope,
+      fs.createWriteStream(payloadFile, { flags: "wx" })
+    );
+    return envelope.header;
+  } catch (error) {
+    await fs.promises.unlink(payloadFile).catch(() => {});
+    if (error instanceof UploadError) {
+      throw error;
+    }
+    throw new UploadError(
+      400,
+      "INVALID_OPAQUE_REQUEST",
+      "Encrypted request authentication failed"
+    );
+  }
+}
+
+async function assertPaddedPayloadSize(payloadFile, expectedBytes) {
+  const stat = await fs.promises.stat(payloadFile);
+  if (stat.size !== expectedBytes) {
+    throw new UploadError(
+      400,
+      "INVALID_OPAQUE_REQUEST",
+      "Encrypted request has an unexpected size"
+    );
+  }
+}
+
+async function storeChunkFile(uploadId, chunkIndex, payloadFile) {
   assertUploadId(uploadId);
   if (!Number.isSafeInteger(chunkIndex) || chunkIndex < 0) {
     throw new UploadError(400, "INVALID_CHUNK_INDEX", "Invalid chunk index");
@@ -373,12 +516,11 @@ async function storeChunk(uploadId, chunkIndex, request) {
 
   return withActiveUpload(uploadId, async () => {
     const manifest = await readManifest(uploadId);
+    await assertPaddedPayloadSize(payloadFile, manifest.chunkSize);
     if (manifest.status === "completed") {
-      request.resume();
       return { success: true, completed: true, chunkIndex };
     }
     if (chunkIndex >= manifest.totalChunks) {
-      request.resume();
       throw new UploadError(400, "INVALID_CHUNK_INDEX", "Invalid chunk index");
     }
 
@@ -387,7 +529,6 @@ async function storeChunk(uploadId, chunkIndex, request) {
     try {
       const stat = await fs.promises.stat(destination);
       if (stat.size === expectedPlaintextBytes) {
-        request.resume();
         await touchUpload(uploadId);
         return { success: true, chunkIndex, alreadyUploaded: true };
       }
@@ -398,61 +539,16 @@ async function storeChunk(uploadId, chunkIndex, request) {
       }
     }
 
-    const token = uuid.v4();
-    const incoming = path.join(uploadDirectory(uploadId), `.incoming-${token}`);
-    const decryptedTemporary = path.join(
-      uploadDirectory(uploadId),
-      `.decrypted-${token}`
-    );
-
+    await fs.promises.truncate(payloadFile, expectedPlaintextBytes);
     try {
-      await receiveRequestToFile(
-        request,
-        incoming,
-        expectedPlaintextBytes + 32
-      );
-      await decryptions.run(async () => {
-        const encrypted = await fs.promises.readFile(incoming);
-        let decrypted;
-        try {
-          decrypted = await decryptBytes(encrypted, {
-            additionalData: chunkAdditionalData(uploadId, chunkIndex),
-          });
-        } catch (error) {
-          throw new UploadError(
-            400,
-            "CHUNK_DECRYPTION_FAILED",
-            "Chunk authentication or decryption failed"
-          );
-        }
-
-        if (decrypted.length !== expectedPlaintextBytes) {
-          throw new UploadError(
-            400,
-            "INVALID_CHUNK_SIZE",
-            "Decrypted chunk has an unexpected size"
-          );
-        }
-
-        await fs.promises.writeFile(decryptedTemporary, decrypted, {
-          flag: "wx",
-        });
-      });
-      try {
-        await fs.promises.link(decryptedTemporary, destination);
-      } catch (error) {
-        if (error.code !== "EEXIST") {
-          throw error;
-        }
+      await fs.promises.link(payloadFile, destination);
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
       }
-      await touchUpload(uploadId);
-      return { success: true, chunkIndex };
-    } finally {
-      await Promise.all([
-        fs.promises.unlink(incoming).catch(() => {}),
-        fs.promises.unlink(decryptedTemporary).catch(() => {}),
-      ]);
     }
+    await touchUpload(uploadId);
+    return { success: true, chunkIndex };
   });
 }
 
@@ -546,7 +642,10 @@ async function performFinalization(uploadId, payload, { io }) {
     const uploadedChunks = await listUploadedChunks(uploadId, manifest);
     if (uploadedChunks.length !== manifest.totalChunks) {
       throw new UploadError(409, "MISSING_CHUNKS", "Upload is not complete", {
-        uploadedChunks,
+        uploaded: encodeUploadedChunkBitmap(
+          uploadedChunks,
+          manifest.totalChunks
+        ),
       });
     }
 
@@ -636,6 +735,89 @@ async function finalizeUpload(uploadId, payload, context) {
   return finalization;
 }
 
+function validateOpaqueHeader(header) {
+  if (
+    !header ||
+    typeof header !== "object" ||
+    header.version !== PROTOCOL_VERSION ||
+    !Object.values(UPLOAD_OPERATIONS).includes(header.operation)
+  ) {
+    throw new UploadError(
+      400,
+      "INVALID_OPAQUE_REQUEST",
+      "Encrypted request metadata is invalid"
+    );
+  }
+}
+
+async function processOpaqueUploadRequest(request, context) {
+  await ensureUploadDirectories();
+  const token = uuid.v4();
+  const encryptedFile = path.join(requestRoot, `${token}.encrypted`);
+  const payloadFile = path.join(requestRoot, `${token}.payload`);
+  const maximumRequestBytes =
+    Math.max(config.uploads.chunkSize, config.uploads.maxChunkSize) +
+    UPLOAD_ENVELOPE_HEADER_BYTES +
+    UPLOAD_ENCRYPTION_OVERHEAD_BYTES;
+
+  try {
+    await receiveRequestToFile(request, encryptedFile, maximumRequestBytes);
+    const header = await decryptions.run(() =>
+      decryptEnvelopeFile(encryptedFile, payloadFile)
+    );
+    validateOpaqueHeader(header);
+
+    switch (header.operation) {
+      case UPLOAD_OPERATIONS.initialize:
+        validateManifest(header);
+        await assertPaddedPayloadSize(payloadFile, header.chunkSize);
+        return await initializeUpload(header);
+      case UPLOAD_OPERATIONS.chunk:
+        return await storeChunkFile(
+          header.uploadId,
+          header.chunkIndex,
+          payloadFile
+        );
+      case UPLOAD_OPERATIONS.finalize: {
+        assertUploadId(header.uploadId);
+        const manifest = await readManifest(header.uploadId);
+        await assertPaddedPayloadSize(payloadFile, manifest.chunkSize);
+        return await finalizeUpload(header.uploadId, header, context);
+      }
+      default:
+        throw new UploadError(
+          400,
+          "INVALID_OPAQUE_REQUEST",
+          "Encrypted request metadata is invalid"
+        );
+    }
+  } finally {
+    await Promise.all([
+      fs.promises.unlink(encryptedFile).catch(() => {}),
+      fs.promises.unlink(payloadFile).catch(() => {}),
+    ]);
+  }
+}
+
+async function cleanupStaleRequestFiles(cutoff) {
+  const entries = await fs.promises.readdir(requestRoot, {
+    withFileTypes: true,
+  });
+  let removedRequestFiles = 0;
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+    const file = path.join(requestRoot, entry.name);
+    const stat = await fs.promises.stat(file);
+    if (stat.mtimeMs < cutoff) {
+      await fs.promises.unlink(file);
+      removedRequestFiles += 1;
+    }
+  }
+  return removedRequestFiles;
+}
+
 async function cleanupStaleUploads(now = Date.now()) {
   await ensureUploadDirectories();
   const cutoff = now - config.uploads.staleTtl * 1000;
@@ -689,7 +871,8 @@ async function cleanupStaleUploads(now = Date.now()) {
     }
   }
 
-  return { removedUploads, removedStagingFiles };
+  const removedRequestFiles = await cleanupStaleRequestFiles(cutoff);
+  return { removedUploads, removedStagingFiles, removedRequestFiles };
 }
 
 function startPeriodicUploadCleanup() {
@@ -715,12 +898,8 @@ function startPeriodicUploadCleanup() {
 }
 
 export {
-  PROTOCOL_VERSION,
   UploadError,
-  chunkAdditionalData,
   cleanupStaleUploads,
-  finalizeUpload,
-  initializeUpload,
+  processOpaqueUploadRequest,
   startPeriodicUploadCleanup,
-  storeChunk,
 };

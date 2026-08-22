@@ -19,6 +19,7 @@ import MessageService, {
 import * as http from "http";
 import config from "./config.js";
 import { decrypt } from "./utils/decryption.js";
+import { encryptUploadResponse } from "./utils/encryption.js";
 import createUploadRouter from "./routes/uploadRoutes.js";
 import { startPeriodicUploadCleanup } from "./services/UploadService.js";
 
@@ -36,14 +37,24 @@ app.get("/sessions/:id/clear_messages", async (req, res) => {
 });
 
 app.get("/serverside-config", async (req, res) => {
-  res.send({
-    messagesToKeep: config.messagesToKeep,
-    uploads: {
-      chunkSize: config.uploads.chunkSize,
-      concurrency: config.uploads.concurrency,
-      staleTtl: config.uploads.staleTtl,
-    },
-  });
+  res
+    .set({
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "no-store",
+    })
+    .send(
+      await encryptUploadResponse({
+        ok: true,
+        result: {
+          messagesToKeep: config.messagesToKeep,
+          uploads: {
+            chunkSize: config.uploads.chunkSize,
+            concurrency: config.uploads.concurrency,
+            staleTtl: config.uploads.staleTtl,
+          },
+        },
+      })
+    );
 });
 
 app.post(

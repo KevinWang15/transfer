@@ -3,6 +3,7 @@ import crypto from "crypto";
 const IV_LENGTH = 16;
 const ENCRYPTION_KEY = "fDfl4koWS3GR";
 let keyPromise;
+let rawKeyPromise;
 
 function getDecryptionKey() {
   if (!keyPromise) {
@@ -31,6 +32,22 @@ function getDecryptionKey() {
   }
 
   return keyPromise;
+}
+
+export function getRawDecryptionKey() {
+  if (!rawKeyPromise) {
+    rawKeyPromise = new Promise((resolve, reject) => {
+      crypto.pbkdf2(
+        ENCRYPTION_KEY,
+        "salt",
+        100000,
+        32,
+        "sha256",
+        (error, key) => (error ? reject(error) : resolve(key))
+      );
+    });
+  }
+  return rawKeyPromise;
 }
 
 export async function decryptBytes(encryptedData, { additionalData } = {}) {

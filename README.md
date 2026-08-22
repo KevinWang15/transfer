@@ -19,22 +19,30 @@ Only the most recent 100 messages within a 3-day window are preserved.
 
 ## Large file uploads
 
-Browser uploads are split into independently authenticated AES-GCM chunks. A
+Browser uploads are split into independently authenticated AES-GCM envelopes. A
 bounded number of chunks are encrypted and uploaded in parallel, and the server
 stores completed chunks under `data/upload-chunks/` until it can stream them into
 the final file. If an upload is interrupted, selecting the same file again in
 the same browser/session resumes the chunks already accepted by the server.
 
-Incomplete uploads and completed resume markers are removed automatically after
-three days by default. The `data` directory must be on persistent storage and
-must have room for both the temporary chunks and the final file while a merge is
+Initialization, chunk, and finalization requests all use the same `POST /u`
+transport. Their routing metadata is inside the authenticated ciphertext, every
+request in one upload is padded to the same size, and server responses are also
+encrypted and padded. A traffic observer can still see the number and timing of
+requests, but cannot read the filename, upload identifier, chunk index, exact
+file size, operation, or resume state from the upload HTTP exchange.
+
+Incomplete uploads, interrupted encrypted request files, and completed resume
+markers are removed automatically after three days by default. The `data`
+directory must be on persistent storage and must have room for the encrypted
+request being processed, temporary chunks, and the final file while a merge is
 in progress.
 
 The upload behavior can be tuned with environment variables:
 
 | Variable                          |    Default | Purpose                                             |
 | --------------------------------- | ---------: | --------------------------------------------------- |
-| `UPLOAD_CHUNK_SIZE_BYTES`         |  `4194304` | Plaintext bytes per browser chunk                   |
+| `UPLOAD_CHUNK_SIZE_BYTES`         |  `4194304` | Maximum padded browser chunk size                   |
 | `UPLOAD_MAX_CHUNK_SIZE_BYTES`     | `16777216` | Largest chunk accepted by the server                |
 | `UPLOAD_CONCURRENCY`              |        `3` | Parallel chunk requests per browser upload          |
 | `UPLOAD_DECRYPTION_CONCURRENCY`   |        `2` | Chunks decrypted concurrently by one server process |

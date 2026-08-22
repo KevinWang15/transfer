@@ -1,5 +1,15 @@
 import NProgress from "nprogress";
-import { encrypt, encryptBytes } from "../utils/encryption.js";
+import {
+  UPLOAD_OPERATIONS,
+  UPLOAD_PROTOCOL_VERSION,
+} from "@transfer/api/consts/uploadProtocol.js";
+
+import { encrypt } from "../utils/encryption.js";
+import {
+  decodeUploadedChunkBitmap,
+  decodeUploadResponse,
+  encodeUploadRequest,
+} from "../utils/uploadProtocol.js";
 
 const API_BASE =
   window.location.origin === "http://localhost:3000"
@@ -10,11 +20,11 @@ const WEBSOCKET_BASE =
     ? "http://localhost:6611/"
     : window.origin + `/`;
 
-const UPLOAD_PROTOCOL_VERSION = 1;
 const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
+const MIN_CHUNK_SIZE = 64 * 1024;
 const DEFAULT_CONCURRENCY = 3;
 const MAX_CHUNK_RETRIES = 5;
-const RESUME_STORAGE_PREFIX = "transfer.upload.v1.";
+const RESUME_STORAGE_PREFIX = "transfer.upload.v2.";
 let serverConfigPromise;
 
 class ApiError extends Error {
@@ -41,6 +51,31 @@ async function responseJson(response) {
     });
   }
   return result;
+}
+
+function uploadApiError(error, fallbackStatus = 0) {
+  return new ApiError(error?.message || "Encrypted upload request failed", {
+    status: error?.status || fallbackStatus,
+    code: error?.code,
+    details: error?.details,
+  });
+}
+
+async function encryptedUploadResponse(encryptedData, fallbackStatus = 0) {
+  let response;
+  try {
+    response = await decodeUploadResponse(encryptedData);
+  } catch (error) {
+    throw new ApiError("Encrypted upload response could not be verified", {
+      status: fallbackStatus,
+      code: "INVALID_UPLOAD_RESPONSE",
+    });
+  }
+
+  if (!response.ok) {
+    throw uploadApiError(response.error, fallbackStatus);
+  }
+  return response.result;
 }
 
 async function encryptedPost(path, value) {
@@ -111,18 +146,25 @@ function chunkSizeAt(fileSize, chunkSize, chunkIndex) {
   return Math.min(chunkSize, fileSize - chunkIndex * chunkSize);
 }
 
-function uploadAdditionalData(uploadId, chunkIndex) {
-  return `transfer-upload-v${UPLOAD_PROTOCOL_VERSION}:${uploadId}:${chunkIndex}`;
+function paddedChunkSize(fileSize, configuredChunkSize) {
+  const maximum = Math.max(MIN_CHUNK_SIZE, configuredChunkSize);
+  if (fileSize >= maximum) {
+    return maximum;
+  }
+
+  let size = MIN_CHUNK_SIZE;
+  while (size < fileSize && size < maximum) {
+    size *= 2;
+  }
+  return Math.min(size, maximum);
 }
 
-function uploadEncryptedChunk(uploadId, chunkIndex, encrypted, onProgress) {
+function uploadOpaqueBody(encrypted, onProgress) {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open(
-      "PUT",
-      `${API_BASE}u/${encodeURIComponent(uploadId)}/${chunkIndex}`
-    );
+    request.open("POST", `${API_BASE}u`);
     request.setRequestHeader("Content-Type", "application/octet-stream");
+    request.responseType = "arraybuffer";
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) {
         onProgress(event.loaded / event.total);
@@ -131,31 +173,21 @@ function uploadEncryptedChunk(uploadId, chunkIndex, encrypted, onProgress) {
     request.onerror = () =>
       reject(new ApiError("Network error while uploading chunk"));
     request.onabort = () => reject(new ApiError("Chunk upload was cancelled"));
-    request.onload = () => {
-      let result = {};
+    request.onload = async () => {
       try {
-        result = request.responseText ? JSON.parse(request.responseText) : {};
-      } catch (error) {
-        // The status code below still provides a useful failure.
-      }
-
-      if (request.status >= 200 && request.status < 300) {
-        resolve(result);
-      } else {
-        reject(
-          new ApiError(
-            result.error || `Chunk upload failed (${request.status})`,
-            {
-              status: request.status,
-              code: result.code,
-              details: result.details,
-            }
-          )
+        resolve(
+          await encryptedUploadResponse(request.response, request.status)
         );
+      } catch (error) {
+        reject(error);
       }
     };
     request.send(encrypted);
   });
+}
+
+async function createOpaqueUploadBody(header, payload, paddedPayloadBytes) {
+  return encodeUploadRequest(header, payload, paddedPayloadBytes);
 }
 
 function shouldRetry(error) {
@@ -173,22 +205,12 @@ function wait(milliseconds) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
-async function uploadChunkWithRetry(
-  uploadId,
-  chunkIndex,
-  encrypted,
-  onProgress
-) {
+async function uploadWithRetry(createEncryptedBody, onProgress) {
   let lastError;
   for (let attempt = 0; attempt < MAX_CHUNK_RETRIES; attempt += 1) {
     try {
       onProgress(0);
-      return await uploadEncryptedChunk(
-        uploadId,
-        chunkIndex,
-        encrypted,
-        onProgress
-      );
+      return await uploadOpaqueBody(await createEncryptedBody(), onProgress);
     } catch (error) {
       lastError = error;
       if (!shouldRetry(error) || attempt === MAX_CHUNK_RETRIES - 1) {
@@ -242,7 +264,9 @@ export default class ApiClient {
   static async getServerSideConfig() {
     if (!serverConfigPromise) {
       serverConfigPromise = apiFetch("serverside-config")
-        .then(responseJson)
+        .then(async (response) =>
+          encryptedUploadResponse(await response.arrayBuffer(), response.status)
+        )
         .catch((error) => {
           serverConfigPromise = null;
           throw error;
@@ -255,6 +279,7 @@ export default class ApiClient {
     const serverConfig = await ApiClient.getServerSideConfig();
     const configuredChunkSize =
       serverConfig.uploads?.chunkSize || DEFAULT_CHUNK_SIZE;
+    const selectedChunkSize = paddedChunkSize(file.size, configuredChunkSize);
     const concurrency = Math.max(
       1,
       Math.min(8, serverConfig.uploads?.concurrency || DEFAULT_CONCURRENCY)
@@ -265,7 +290,7 @@ export default class ApiClient {
       record = newResumeRecord(file, {
         name,
         sessionId,
-        chunkSize: configuredChunkSize,
+        chunkSize: selectedChunkSize,
       });
       saveResumeRecord(storageKey, record);
     }
@@ -274,7 +299,15 @@ export default class ApiClient {
     try {
       let initialized;
       try {
-        initialized = await encryptedPost("u/init", record);
+        initialized = await uploadWithRetry(
+          () =>
+            createOpaqueUploadBody(
+              { ...record, operation: UPLOAD_OPERATIONS.initialize },
+              null,
+              record.chunkSize
+            ),
+          () => {}
+        );
       } catch (error) {
         if (
           error.code !== "UPLOAD_METADATA_CONFLICT" &&
@@ -285,10 +318,18 @@ export default class ApiClient {
         record = newResumeRecord(file, {
           name,
           sessionId,
-          chunkSize: configuredChunkSize,
+          chunkSize: selectedChunkSize,
         });
         saveResumeRecord(storageKey, record);
-        initialized = await encryptedPost("u/init", record);
+        initialized = await uploadWithRetry(
+          () =>
+            createOpaqueUploadBody(
+              { ...record, operation: UPLOAD_OPERATIONS.initialize },
+              null,
+              record.chunkSize
+            ),
+          () => {}
+        );
       }
 
       if (initialized.completed) {
@@ -296,7 +337,10 @@ export default class ApiClient {
         return initialized;
       }
 
-      const uploaded = new Set(initialized.uploadedChunks || []);
+      const uploaded = decodeUploadedChunkBitmap(
+        initialized.uploaded,
+        record.totalChunks
+      );
       const pending = [];
       let completedBytes = 0;
       for (let index = 0; index < record.totalChunks; index += 1) {
@@ -332,14 +376,18 @@ export default class ApiClient {
             const end = Math.min(file.size, start + record.chunkSize);
             const plaintextBytes = end - start;
             const plaintext = await file.slice(start, end).arrayBuffer();
-            const encrypted = await encryptBytes(plaintext, {
-              additionalData: uploadAdditionalData(record.uploadId, chunkIndex),
-            });
-
-            await uploadChunkWithRetry(
-              record.uploadId,
-              chunkIndex,
-              encrypted,
+            await uploadWithRetry(
+              () =>
+                createOpaqueUploadBody(
+                  {
+                    version: UPLOAD_PROTOCOL_VERSION,
+                    operation: UPLOAD_OPERATIONS.chunk,
+                    uploadId: record.uploadId,
+                    chunkIndex,
+                  },
+                  plaintext,
+                  record.chunkSize
+                ),
               (fraction) => {
                 partialBytes.set(chunkIndex, plaintextBytes * fraction);
                 updateProgress();
@@ -367,11 +415,20 @@ export default class ApiClient {
         throw failedWorker.reason;
       }
 
-      const result = await encryptedPost(`u/${record.uploadId}/finalize`, {
-        version: UPLOAD_PROTOCOL_VERSION,
-        uploadId: record.uploadId,
-        sessionId,
-      });
+      const result = await uploadWithRetry(
+        () =>
+          createOpaqueUploadBody(
+            {
+              version: UPLOAD_PROTOCOL_VERSION,
+              operation: UPLOAD_OPERATIONS.finalize,
+              uploadId: record.uploadId,
+              sessionId,
+            },
+            null,
+            record.chunkSize
+          ),
+        () => {}
+      );
       clearResumeRecord(storageKey);
       return result;
     } finally {

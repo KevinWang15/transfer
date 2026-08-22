@@ -24,7 +24,7 @@ function getEncryptionKey() {
         keyMaterial,
         { name: "AES-GCM", length: 256 },
         false,
-        ["encrypt"]
+        ["encrypt", "decrypt"]
       );
     })();
   }
@@ -54,4 +54,28 @@ export async function encryptBytes(data, { additionalData } = {}) {
 
 export async function encrypt(data) {
   return encryptBytes(encoder.encode(JSON.stringify(data)));
+}
+
+export async function decryptBytes(encryptedData, { additionalData } = {}) {
+  const bytes =
+    encryptedData instanceof Uint8Array
+      ? encryptedData
+      : new Uint8Array(encryptedData);
+  if (bytes.byteLength < IV_LENGTH + 16) {
+    throw new Error("Encrypted payload is too short");
+  }
+
+  const iv = bytes.subarray(0, IV_LENGTH);
+  const data = bytes.subarray(IV_LENGTH);
+  const key = await getEncryptionKey();
+  const algorithm = { name: "AES-GCM", iv };
+
+  if (additionalData !== undefined) {
+    algorithm.additionalData =
+      typeof additionalData === "string"
+        ? encoder.encode(additionalData)
+        : additionalData;
+  }
+
+  return crypto.subtle.decrypt(algorithm, key, data);
 }
