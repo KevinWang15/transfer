@@ -63,6 +63,25 @@ function listMessagesBySessionId(sessionId) {
   });
 }
 
+function findMessageByClientId(sessionId, clientId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `select *
+         from messages
+        where session_id = ? and client_id = ?
+        limit 1;`,
+      [sessionId, clientId],
+      (error, row) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(row ? new Message(row) : null);
+        }
+      }
+    );
+  });
+}
+
 function clearMessagesBySessionId(sessionId) {
   return (async () => {
     await MessageService.autoPrune(sessionId, { pruneAllImmediately: true });
@@ -72,7 +91,21 @@ function clearMessagesBySessionId(sessionId) {
 
 class MessageService {
   static async addMessage(message, { sessionId, io }) {
-    message.id = await message.save();
+    const messageId = await message.save();
+    if (messageId === null && message.client_id) {
+      const existing = await findMessageByClientId(
+        sessionId,
+        message.client_id
+      );
+      if (!existing) {
+        throw new Error("Idempotent message could not be recovered");
+      }
+      existing.data = JSON.parse(existing.data);
+      io.to(sessionId).emit(NEW_MESSAGE, existing);
+      return existing;
+    }
+
+    message.id = messageId;
     try {
       await MessageService.autoPrune(sessionId);
     } catch (error) {
@@ -149,5 +182,6 @@ function startPeriodicAutoPrune() {
 export default MessageService;
 export { listMessagesBySessionId, clearMessagesBySessionId };
 export { listAllMessages };
+export { findMessageByClientId };
 export { deleteMessageById };
 export { startPeriodicAutoPrune };

@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import sqlite3 from "sqlite3";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -39,11 +40,12 @@ async function unusedPort() {
   return port;
 }
 
-async function startServer(extraEnvironment = {}) {
+async function startServer(extraEnvironment = {}, prepareWorkingDirectory) {
   const workingDirectory = await fs.mkdtemp(
     path.join(os.tmpdir(), "transfer-upload-test-")
   );
   await fs.mkdir(path.join(workingDirectory, "data"));
+  await prepareWorkingDirectory?.(workingDirectory);
   const port = await unusedPort();
   const child = spawn(
     process.execPath,
@@ -99,6 +101,33 @@ async function startServer(extraEnvironment = {}) {
   };
 }
 
+function createLegacyMessageDatabase(filename) {
+  return new Promise((resolve, reject) => {
+    const database = new sqlite3.Database(filename);
+    database.exec(
+      `create table messages
+       (
+         id integer primary key autoincrement,
+         session_id text,
+         data text,
+         created_at datetime,
+         created_by text
+       );
+       insert into messages (session_id, data, created_at)
+       values ('migration-test', '{"type":"text","text":"Keep me"}', ${
+         Date.now() - 1000
+       });`,
+      (error) => {
+        if (error) {
+          database.close(() => reject(error));
+        } else {
+          database.close(resolve);
+        }
+      }
+    );
+  });
+}
+
 async function opaquePost(baseUrl, header, payload, paddedPayloadBytes) {
   const body = await encodeUploadRequest(header, payload, paddedPayloadBytes);
   const response = await fetch(`${baseUrl}u`, {
@@ -129,6 +158,27 @@ async function postChunk(
     plaintext,
     paddedPayloadBytes
   );
+}
+
+function encryptTextRequest(value) {
+  const iv = crypto.randomBytes(16);
+  const key = crypto.pbkdf2Sync("fDfl4koWS3GR", "salt", 100000, 32, "sha256");
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(value), "utf8"),
+    cipher.final(),
+  ]);
+  return Buffer.concat([iv, encrypted, cipher.getAuthTag()]);
+}
+
+async function postEncryptedText(baseUrl, value) {
+  const body = encryptTextRequest(value);
+  const response = await fetch(`${baseUrl}t`, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body,
+  });
+  return { body, response, result: await response.json() };
 }
 
 async function runWorkers(values, concurrency, operation) {
@@ -418,4 +468,58 @@ test("stale incomplete uploads and request files are removed", async (t) => {
     }
   }
   assert.fail("stale upload directory was not cleaned");
+});
+
+test("encrypted text retries are opaque and idempotent", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+
+  const message = {
+    text: "A message that should only appear once",
+    sessionId: "text-idempotency-test",
+    clientId: crypto.randomUUID(),
+    timestamp: Date.now(),
+  };
+  const first = await postEncryptedText(server.baseUrl, message);
+  const retried = await postEncryptedText(server.baseUrl, message);
+
+  assert.equal(first.response.status, 200, server.diagnostics());
+  assert.equal(retried.response.status, 200, server.diagnostics());
+  assert.equal(first.result.messageId, retried.result.messageId);
+  assert.equal(first.body.includes(Buffer.from(message.text)), false);
+  assert.equal(first.body.includes(Buffer.from(message.clientId)), false);
+
+  const historyResponse = await fetch(
+    `${server.baseUrl}sessions/${message.sessionId}/history`
+  );
+  const history = await historyResponse.json();
+  assert.equal(history.length, 1);
+  assert.equal(history[0].client_id, message.clientId);
+  assert.equal(JSON.parse(history[0].data).text, message.text);
+});
+
+test("message idempotency migrates an existing database without losing history", async (t) => {
+  const server = await startServer({}, (workingDirectory) =>
+    createLegacyMessageDatabase(path.join(workingDirectory, "data/db.sqlite3"))
+  );
+  t.after(() => server.close());
+
+  const message = {
+    text: "Added after migration",
+    sessionId: "migration-test",
+    clientId: crypto.randomUUID(),
+    timestamp: Date.now(),
+  };
+  const first = await postEncryptedText(server.baseUrl, message);
+  const retried = await postEncryptedText(server.baseUrl, message);
+  assert.equal(first.response.status, 200, server.diagnostics());
+  assert.equal(first.result.messageId, retried.result.messageId);
+
+  const history = await fetch(
+    `${server.baseUrl}sessions/${message.sessionId}/history`
+  ).then((response) => response.json());
+  assert.equal(history.length, 2);
+  assert.equal(JSON.parse(history[0].data).text, "Keep me");
+  assert.equal(JSON.parse(history[1].data).text, message.text);
+  assert.equal(history[1].client_id, message.clientId);
 });

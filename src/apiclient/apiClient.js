@@ -459,11 +459,12 @@ export default class ApiClient {
     return responseJson(response);
   }
 
-  static async sendText(text, { sessionId }) {
+  static async sendText(text, { sessionId, clientId, timestamp = Date.now() }) {
     return encryptedPost("t", {
       text,
       sessionId,
-      timestamp: Date.now(),
+      clientId,
+      timestamp,
     });
   }
 }

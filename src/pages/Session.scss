@@ -1,4 +1,5 @@
 .session-shell {
+  position: relative;
   display: flex;
   min-height: 540px;
   height: 100dvh;
@@ -395,6 +396,37 @@
   margin: 0 auto;
 }
 
+.jump-to-latest {
+  position: absolute;
+  top: -43px;
+  left: 50%;
+  display: inline-flex;
+  min-height: 34px;
+  gap: 7px;
+  align-items: center;
+  padding: 0 13px;
+  color: #e6e4ff;
+  background: rgba(27, 29, 48, 0.96);
+  border: 1px solid rgba(132, 122, 255, 0.24);
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  font-size: 10px;
+  font-weight: 700;
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+
+  ion-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover {
+    color: white;
+    background: rgba(42, 43, 70, 0.98);
+    border-color: rgba(145, 136, 255, 0.4);
+  }
+}
+
 .session-composer {
   display: grid;
   min-height: 70px;
@@ -414,6 +446,7 @@
     max-height: 130px;
     min-height: 50px;
     padding: 14px 6px 10px;
+    overflow-y: auto;
     resize: none;
     color: var(--text-primary);
     background: transparent;
@@ -425,6 +458,43 @@
     &::placeholder {
       color: var(--text-faint);
     }
+  }
+}
+
+.composer-delivery-summary {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: #aaa5ff;
+
+  > span {
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
+    background: currentColor;
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(132, 122, 255, 0.08);
+    animation: composer-status-pulse 1.2s ease-in-out infinite;
+  }
+
+  &.failed {
+    color: #e88b94;
+
+    > span {
+      animation: none;
+      box-shadow: 0 0 0 3px rgba(232, 139, 148, 0.08);
+    }
+  }
+}
+
+@keyframes composer-status-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
 
@@ -533,6 +603,11 @@
 
     &:hover {
       color: var(--danger);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
     }
   }
 }
@@ -750,7 +825,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .session-loading span,
-  .composer-send {
+  .composer-send,
+  .composer-delivery-summary > span {
     animation: none;
     transition: none;
   }

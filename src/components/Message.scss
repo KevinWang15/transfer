@@ -15,12 +15,38 @@
   letter-spacing: 0.035em;
 
   > span {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
     text-transform: uppercase;
+
+    ion-icon {
+      width: 12px;
+      height: 12px;
+    }
   }
 
   time {
     font-weight: 500;
     letter-spacing: 0;
+  }
+}
+
+.message-state-label {
+  &.sending {
+    color: #aaa5ff;
+
+    ion-icon {
+      animation: delivery-pulse 1.2s ease-in-out infinite;
+    }
+  }
+
+  &.sent {
+    color: #68cfb8;
+  }
+
+  &.failed {
+    color: #f08a93;
   }
 }
 
@@ -31,6 +57,21 @@
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  transition: opacity 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.delivery-sending .message-card {
+  background: rgba(22, 25, 40, 0.72);
+  border-color: rgba(132, 122, 255, 0.16);
+}
+
+.delivery-sent .message-card {
+  border-color: rgba(70, 205, 173, 0.14);
+}
+
+.delivery-failed .message-card {
+  background: rgba(42, 22, 29, 0.38);
+  border-color: rgba(235, 105, 118, 0.25);
 }
 
 .message-primary-action {
@@ -51,7 +92,9 @@
   &:hover {
     background: rgba(255, 255, 255, 0.025);
 
-    .message-trailing-icon {
+    .message-trailing-icon:not(.delivery-sending):not(.delivery-sent):not(
+        .delivery-failed
+      ) {
       color: var(--accent-bright);
       background: rgba(110, 100, 245, 0.1);
     }
@@ -86,6 +129,88 @@
   ion-icon {
     width: 15px;
     height: 15px;
+  }
+}
+
+.message-trailing-icon {
+  &.delivery-sending {
+    color: #aaa5ff;
+
+    ion-icon {
+      animation: delivery-pulse 1.2s ease-in-out infinite;
+    }
+  }
+
+  &.delivery-sent {
+    color: #68cfb8;
+    background: rgba(65, 207, 175, 0.08);
+  }
+
+  &.delivery-failed {
+    color: #f08a93;
+    background: rgba(235, 105, 118, 0.08);
+  }
+}
+
+.message-failure-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 0 53px;
+  color: #d8979d;
+  font-size: 10px;
+
+  > div {
+    display: flex;
+    gap: 7px;
+  }
+
+  button {
+    display: inline-flex;
+    min-height: 28px;
+    gap: 5px;
+    align-items: center;
+    padding: 0 9px;
+    color: var(--text-tertiary);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 650;
+
+    ion-icon {
+      width: 12px;
+      height: 12px;
+    }
+
+    &:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.05);
+    }
+  }
+
+  .retry-message {
+    color: #ffd6d9;
+    background: rgba(235, 105, 118, 0.1);
+    border-color: rgba(235, 105, 118, 0.18);
+
+    &:hover {
+      background: rgba(235, 105, 118, 0.16);
+    }
+  }
+}
+
+@keyframes delivery-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -180,5 +305,23 @@
   .message-type-icon {
     width: 36px;
     height: 36px;
+  }
+
+  .message-failure-actions {
+    padding-left: 0;
+    align-items: flex-start;
+    flex-direction: column;
+
+    > div {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-state-label ion-icon,
+  .message-trailing-icon ion-icon {
+    animation: none !important;
   }
 }

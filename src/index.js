@@ -9,7 +9,7 @@ import {
 } from "react-router-dom";
 import HomePage from "./pages/HomePage.js";
 import Session from "./pages/Session.js";
-import "toastify-js/src/toastify.css";
+import FeedbackHost from "./components/FeedbackHost.js";
 
 function DocumentTitle({ title }) {
   const routeParams = useParams();
@@ -44,4 +44,9 @@ const router = createBrowserRouter([
 
 const root = ReactDOM.createRoot(document.body);
 
-root.render(<RouterProvider router={router} />);
+root.render(
+  <>
+    <RouterProvider router={router} />
+    <FeedbackHost />
+  </>
+);

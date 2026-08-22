@@ -135,9 +135,16 @@ app.post("/t", async (req, res) => {
     const encryptedBuffer = Buffer.concat(chunks);
 
     const decrypted = await decrypt(encryptedBuffer);
+    const clientId =
+      typeof decrypted.clientId === "string" &&
+      decrypted.clientId.length > 0 &&
+      decrypted.clientId.length <= 128
+        ? decrypted.clientId
+        : null;
 
     const newMessage = new Message({
       session_id: decrypted.sessionId,
+      client_id: clientId,
       data: {
         type: "text",
         text: decrypted.text,
@@ -145,12 +152,12 @@ app.post("/t", async (req, res) => {
       created_at: decrypted.timestamp,
     });
 
-    await MessageService.addMessage(newMessage, {
+    const savedMessage = await MessageService.addMessage(newMessage, {
       sessionId: decrypted.sessionId,
       io,
     });
 
-    res.json({ success: true });
+    res.json({ success: true, messageId: savedMessage.id });
   } catch (error) {
     console.log(error);
     res.status(400).json({ error: "Decryption failed" });

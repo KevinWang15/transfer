@@ -2,8 +2,8 @@ import React from "react";
 import * as uuid from "uuid";
 import withRouter from "../utils/withRouter.js";
 import toast from "../utils/toast.js";
+import { showDialog } from "../utils/feedback.js";
 import "./HomePage.scss";
-import Swal from "sweetalert2";
 import { IonIcon } from "@ionic/react";
 import {
   arrowForwardOutline,
@@ -21,6 +21,7 @@ class HomePage extends React.Component {
     this.props.router.navigate(`/sessions/${sessionId}`);
     toast("Session ready — share the link to invite someone.", {
       duration: 5000,
+      tone: "success",
     });
   };
 
@@ -186,23 +187,24 @@ class HomePage extends React.Component {
 }
 
 function promptForSessionName() {
-  return Swal.fire({
+  return showDialog({
+    icon: keyOutline,
+    eyebrow: "Private session",
     title: "Name your session",
-    input: "text",
-    inputLabel:
+    description:
       "Use at least 10 characters and make it hard to guess. Anyone who knows the name can open the session.",
-    inputPlaceholder: "e.g. atlas-review-august",
-    confirmButtonText: "Create session",
-    cancelButtonText: "Cancel",
-    showCancelButton: true,
-    inputAttributes: {
-      minlength: 10,
-      autocomplete: "off",
-      autocapitalize: "off",
-      spellcheck: "false",
-      required: true,
+    input: {
+      label: "Session name",
+      placeholder: "e.g. atlas-review-august",
+      autoComplete: "off",
+      autoCapitalize: "off",
+      spellCheck: false,
+      maxLength: 2048,
     },
-    inputValidator: (value) => {
+    confirmLabel: "Create session",
+    cancelLabel: "Cancel",
+    showCancel: true,
+    validate: (value) => {
       if (value.trim().length < 10) {
         return "Use at least 10 characters for a safer session name.";
       }

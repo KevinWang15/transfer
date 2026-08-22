@@ -1,11 +1,7 @@
-import Toastify from "toastify-js";
+import { showToast } from "./feedback.js";
 
-function toast(message, { duration = 1000 } = {}) {
-  Toastify({
-    text: message,
-    duration,
-    close: true,
-  }).showToast();
+function toast(message, options) {
+  return showToast(message, options);
 }
 
 export default toast;

@@ -2,16 +2,14 @@ import React from "react";
 import withRouter from "../utils/withRouter.js";
 import { io } from "socket.io-client";
 import ApiClient, { API_BASE, WEBSOCKET_BASE } from "../apiclient/apiClient.js";
-import {
-  NEW_MESSAGE,
-  POST_MESSAGE,
-} from "@transfer/api/consts/socketEvents.js";
+import { NEW_MESSAGE } from "@transfer/api/consts/socketEvents.js";
 import toast from "../utils/toast.js";
 import "./Session.scss";
 import Message from "../components/Message.js";
 import { IonIcon } from "@ionic/react";
 import {
   attachOutline,
+  arrowDownOutline,
   cloudUploadOutline,
   copyOutline,
   imagesOutline,
@@ -23,30 +21,55 @@ import {
   trashOutline,
 } from "ionicons/icons/index.js";
 import QRCode from "qrcode";
-import sweetalert2 from "sweetalert2";
-import copy from "copy-to-clipboard";
-import { createRoot } from "react-dom/client";
 import { stripTrailingSlash } from "../utils/utils.js";
+import { showDialog } from "../utils/feedback.js";
+import { copyText } from "../utils/clipboard.js";
 import UploadProgress from "../components/UploadProgress.js";
+import {
+  createQueuedUploads,
+  summarizeUploadQueue,
+  UPLOAD_PHASES,
+} from "../utils/uploadQueue.js";
+import {
+  createPendingTextMessage,
+  DELIVERY_STATUS,
+  messagesMatch,
+  reconcileIncomingMessage,
+  reconcileMessageHistory,
+  removeLocalMessage,
+  updateLocalDeliveryStatus,
+} from "../utils/messageState.js";
 
 class Session extends React.Component {
   state = {
     messages: [],
     textboxText: "",
     serversideConfig: null,
-    uploadProgress: null,
+    uploads: [],
     connectionStatus: "connecting",
     historyLoaded: false,
     isDraggingFiles: false,
+    hasUnseenMessages: false,
   };
 
   socket = null;
   uploadQueue = Promise.resolve();
   mainRef = React.createRef();
+  textareaRef = React.createRef();
   dragDepth = 0;
+  hasConnected = false;
+  hasMounted = false;
+  confirmationTimers = new Set();
+  uploadCleanupTimer = null;
+  uploadGeneration = 0;
+  announcedUploadGeneration = 0;
 
   constructor(props) {
     super(props);
+    this.state = {
+      ...this.state,
+      textboxText: this.loadDraft(props.router.params.id),
+    };
     this.socket = io(`${WEBSOCKET_BASE}`, {
       extraHeaders: {
         sessionId: props.router.params.id,
@@ -54,25 +77,36 @@ class Session extends React.Component {
     });
 
     this.socket.on("connect", () => {
+      const isReconnect = this.hasConnected;
+      this.hasConnected = true;
+      if (!this.hasMounted) {
+        return;
+      }
       this.setState({ connectionStatus: "connected" });
+      if (isReconnect) {
+        this.loadSessionHistory({ silent: true });
+      }
     });
 
     this.socket.on("disconnect", () => {
+      if (!this.hasMounted) {
+        return;
+      }
       this.setState({ connectionStatus: "offline" });
-      toast("Connection lost — trying to reconnect.", { duration: 3000 });
+      toast("Connection lost — trying to reconnect.", {
+        duration: 4000,
+        tone: "warning",
+      });
     });
 
-    this.socket.on(NEW_MESSAGE, (...args) => {
-      this.setState(
-        (state) => ({
-          messages: [...state.messages, args[0]],
-        }),
-        this.scrollToBottom
-      );
-    });
+    this.socket.on(NEW_MESSAGE, this.receiveMessage);
   }
 
   componentDidMount() {
+    this.hasMounted = true;
+    if (this.socket.connected) {
+      this.setState({ connectionStatus: "connected" });
+    }
     this.loadSessionHistory();
     ApiClient.getServerSideConfig()
       .then((serversideConfig) => {
@@ -82,20 +116,59 @@ class Session extends React.Component {
         console.error("server configuration failed to load", error);
       });
     this.addDragDropListener();
+    this.resizeComposer();
   }
 
   componentWillUnmount() {
+    this.hasMounted = false;
     this.removeDragDropListener();
+    this.confirmationTimers.forEach((timer) => window.clearTimeout(timer));
+    this.confirmationTimers.clear();
+    window.clearTimeout(this.uploadCleanupTimer);
+    this.socket?.removeAllListeners();
     this.socket?.disconnect();
   }
 
-  socketOps = {
-    postMessage: (message) => {
-      this.socket.emit(POST_MESSAGE, message);
-    },
+  removeDragDropListener = () => {};
+
+  draftStorageKey = (sessionId = this.props.router.params.id) =>
+    `transfer.session-draft.${sessionId}`;
+
+  loadDraft = (sessionId) => {
+    try {
+      return window.localStorage.getItem(this.draftStorageKey(sessionId)) || "";
+    } catch (error) {
+      return "";
+    }
   };
 
-  removeDragDropListener = () => {};
+  persistDraft = (text) => {
+    try {
+      const key = this.draftStorageKey();
+      if (text) {
+        window.localStorage.setItem(key, text);
+      } else {
+        window.localStorage.removeItem(key);
+      }
+    } catch (error) {
+      // Draft persistence is a convenience and should never block composing.
+    }
+  };
+
+  handleTextChange = (event) => {
+    const textboxText = event.target.value;
+    this.persistDraft(textboxText);
+    this.setState({ textboxText }, this.resizeComposer);
+  };
+
+  resizeComposer = () => {
+    const textarea = this.textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 130)}px`;
+  };
 
   sendFile = () => {
     const input = document.createElement("input");
@@ -110,20 +183,29 @@ class Session extends React.Component {
     document.body.removeChild(input);
   };
 
-  copySessionLink = () => {
-    copy(window.location.href);
-    toast("Session link copied.", { duration: 2000 });
+  copySessionLink = async () => {
+    try {
+      await copyText(window.location.href);
+      toast("Session link copied.", { duration: 2400, tone: "success" });
+    } catch (error) {
+      toast("Could not copy the session link.", {
+        duration: 3600,
+        tone: "error",
+      });
+    }
   };
 
   async deleteEverythingInThisSession() {
-    const result = await sweetalert2.fire({
+    const result = await showDialog({
+      icon: trashOutline,
+      tone: "danger",
+      eyebrow: "Permanent action",
       title: "Clear this session?",
-      text: "Every message and uploaded file in this session will be permanently removed.",
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Clear session",
-      cancelButtonText: "Keep everything",
-      reverseButtons: true,
+      description:
+        "Every message and uploaded file in this session will be permanently removed. This cannot be undone.",
+      showCancel: true,
+      confirmLabel: "Clear session",
+      cancelLabel: "Keep everything",
     });
 
     if (!result.isConfirmed) {
@@ -132,63 +214,210 @@ class Session extends React.Component {
 
     try {
       await ApiClient.deleteEverythingInSession(this.props.router.params.id);
-      toast("Session cleared.", { duration: 2000 });
+      toast("Session cleared.", { duration: 2600, tone: "success" });
       this.setState({ messages: [] });
     } catch (error) {
       console.error("session could not be cleared", error);
       toast("Could not clear the session. Please try again.", {
-        duration: 3000,
+        duration: 4000,
+        tone: "error",
       });
     }
   }
 
   uploadFiles = (files) => {
-    const pendingFiles = Array.from(files || []);
+    const pendingUploads = createQueuedUploads(files);
+    if (!pendingUploads.length) {
+      return Promise.resolve();
+    }
+
+    window.clearTimeout(this.uploadCleanupTimer);
+    this.uploadGeneration += 1;
+    const queuedUpload = new Promise((resolve, reject) => {
+      this.setState(
+        (state) => ({ uploads: [...state.uploads, ...pendingUploads] }),
+        () => this.queueUploadBatch(pendingUploads).then(resolve, reject)
+      );
+    });
+
+    if (pendingUploads.length > 1) {
+      toast(
+        `${pendingUploads.length} files added — they’ll upload one at a time.`,
+        { duration: 3200, tone: "info" }
+      );
+    }
+
+    return queuedUpload;
+  };
+
+  queueUploadBatch = (uploads) => {
     const queuedUpload = this.uploadQueue.then(() =>
-      this.performUploads(pendingFiles)
+      this.performUploads(uploads)
     );
     this.uploadQueue = queuedUpload.catch(() => {});
     return queuedUpload;
   };
 
-  async performUploads(files) {
-    for (const [index, inputFile] of files.entries()) {
-      const fileDetails = {
-        filename: inputFile.name,
-        fileIndex: index + 1,
-        totalFiles: files.length,
-      };
-      this.setState({
-        uploadProgress: {
-          ...fileDetails,
-          phase: "preparing",
-          uploadedBytes: 0,
-          totalBytes: inputFile.size,
-          progress: 0,
-          speedBytesPerSecond: 0,
-          etaSeconds: null,
-        },
+  updateUpload = (id, changes, callback) => {
+    if (!this.hasMounted) {
+      callback?.();
+      return;
+    }
+    this.setState(
+      (state) => ({
+        uploads: state.uploads.map((upload) =>
+          upload.id === id ? { ...upload, ...changes } : upload
+        ),
+      }),
+      callback
+    );
+  };
+
+  async performUploads(uploads) {
+    for (const upload of uploads) {
+      const queuedUpload = this.state.uploads.find(
+        (candidate) => candidate.id === upload.id
+      );
+      if (!queuedUpload || queuedUpload.phase !== UPLOAD_PHASES.queued) {
+        continue;
+      }
+
+      this.updateUpload(upload.id, {
+        phase: UPLOAD_PHASES.preparing,
+        uploadedBytes: 0,
+        confirmedBytes: 0,
+        progress: 0,
+        speedBytesPerSecond: 0,
+        etaSeconds: null,
+        error: null,
       });
 
       try {
-        await ApiClient.uploadAttachment(inputFile, {
-          name: inputFile.name,
+        await ApiClient.uploadAttachment(upload.file, {
+          name: upload.filename,
           sessionId: this.props.router.params.id,
-          onProgress: (uploadProgress) =>
-            this.setState({
-              uploadProgress: { ...fileDetails, ...uploadProgress },
-            }),
+          onProgress: (progress) => this.updateUpload(upload.id, progress),
         });
+        await new Promise((resolve) =>
+          this.updateUpload(
+            upload.id,
+            {
+              phase: UPLOAD_PHASES.complete,
+              uploadedBytes: upload.totalBytes,
+              confirmedBytes: upload.totalBytes,
+              progress: 1,
+              speedBytesPerSecond: 0,
+              etaSeconds: 0,
+            },
+            resolve
+          )
+        );
       } catch (error) {
         console.error("file upload failed", error);
-        toast(`Upload failed: ${inputFile.name} (${error.message})`, {
-          duration: 4000,
+        await new Promise((resolve) =>
+          this.updateUpload(
+            upload.id,
+            {
+              phase: UPLOAD_PHASES.failed,
+              speedBytesPerSecond: 0,
+              etaSeconds: null,
+              error: error.message || "Upload failed",
+            },
+            resolve
+          )
+        );
+        toast(`Upload failed: ${upload.filename} (${error.message})`, {
+          duration: 5000,
+          tone: "error",
         });
       }
     }
 
-    this.setState({ uploadProgress: null });
+    this.finishUploadQueue();
   }
+
+  finishUploadQueue = () => {
+    if (!this.hasMounted) {
+      return;
+    }
+    const summary = summarizeUploadQueue(this.state.uploads);
+    if (summary.queuedCount || summary.activeCount) {
+      return;
+    }
+    if (this.announcedUploadGeneration === this.uploadGeneration) {
+      return;
+    }
+
+    this.announcedUploadGeneration = this.uploadGeneration;
+    if (summary.failedCount) {
+      toast(
+        `${summary.completedCount} uploaded · ${summary.failedCount} failed.`,
+        { duration: 5000, tone: "warning" }
+      );
+      return;
+    }
+
+    toast(
+      `${summary.completedCount} ${
+        summary.completedCount === 1 ? "file" : "files"
+      } uploaded.`,
+      { duration: 3000, tone: "success" }
+    );
+    const completedGeneration = this.uploadGeneration;
+    this.uploadCleanupTimer = window.setTimeout(() => {
+      if (completedGeneration !== this.uploadGeneration) {
+        return;
+      }
+      this.setState((state) => {
+        const current = summarizeUploadQueue(state.uploads);
+        return current.queuedCount || current.activeCount
+          ? null
+          : { uploads: [] };
+      });
+    }, 4000);
+  };
+
+  retryUpload = (id) => {
+    const upload = this.state.uploads.find(
+      (candidate) =>
+        candidate.id === id && candidate.phase === UPLOAD_PHASES.failed
+    );
+    if (!upload) {
+      return;
+    }
+
+    window.clearTimeout(this.uploadCleanupTimer);
+    this.uploadGeneration += 1;
+    this.updateUpload(
+      id,
+      {
+        phase: UPLOAD_PHASES.queued,
+        uploadedBytes: 0,
+        confirmedBytes: 0,
+        progress: 0,
+        speedBytesPerSecond: 0,
+        etaSeconds: null,
+        error: null,
+      },
+      () => this.queueUploadBatch([upload])
+    );
+  };
+
+  removeQueuedUpload = (id) => {
+    this.setState((state) => ({
+      uploads: state.uploads.filter(
+        (upload) => upload.id !== id || upload.phase !== UPLOAD_PHASES.queued
+      ),
+    }));
+  };
+
+  dismissUploadQueue = () => {
+    const summary = summarizeUploadQueue(this.state.uploads);
+    if (!summary.activeCount && !summary.queuedCount) {
+      window.clearTimeout(this.uploadCleanupTimer);
+      this.setState({ uploads: [] });
+    }
+  };
 
   handlePaste = async (event) => {
     const imageItem = Array.from(event.clipboardData?.items || []).find(
@@ -208,13 +437,18 @@ class Session extends React.Component {
 
     const previewUrl = URL.createObjectURL(image);
     try {
-      const result = await sweetalert2.fire({
+      const result = await showDialog({
+        icon: imagesOutline,
+        eyebrow: "Clipboard image",
         title: "Send this image?",
-        imageUrl: previewUrl,
-        imageAlt: "Clipboard image preview",
-        showCancelButton: true,
-        confirmButtonText: "Send image",
-        cancelButtonText: "Cancel",
+        description: "Review the image before adding it to this session.",
+        image: {
+          src: previewUrl,
+          alt: "Clipboard image preview",
+        },
+        showCancel: true,
+        confirmLabel: "Send image",
+        cancelLabel: "Cancel",
       });
 
       if (result.isConfirmed) {
@@ -225,43 +459,185 @@ class Session extends React.Component {
     }
   };
 
-  sendTextMessage = async () => {
-    if (!this.state.textboxText.trim()) {
+  sendTextMessage = () => {
+    const text = this.state.textboxText;
+    if (!text.trim()) {
       return;
     }
 
+    const pendingMessage = createPendingTextMessage({
+      text,
+      sessionId: this.props.router.params.id,
+    });
+    this.persistDraft("");
+    this.setState(
+      (state) => ({
+        messages: [...state.messages, pendingMessage],
+        textboxText: "",
+        hasUnseenMessages: false,
+      }),
+      () => {
+        this.resizeComposer();
+        this.scrollToBottom();
+      }
+    );
+    this.deliverTextMessage(pendingMessage);
+  };
+
+  deliverTextMessage = async (message) => {
     try {
-      await ApiClient.sendText(this.state.textboxText, {
+      await ApiClient.sendText(message.data.text, {
         sessionId: this.props.router.params.id,
+        clientId: message.client_id,
+        timestamp: message.created_at,
       });
-      this.setState({ textboxText: "" });
+      if (!this.hasMounted) {
+        return;
+      }
+      this.setState((state) => ({
+        messages: updateLocalDeliveryStatus(
+          state.messages,
+          message.client_id,
+          DELIVERY_STATUS.sent
+        ),
+      }));
+      this.scheduleConfirmationRefresh(message.client_id);
     } catch (error) {
-      console.error("message send failed", error);
-      toast("Message could not be sent. Please try again.", {
-        duration: 3000,
-      });
+      if (!this.hasMounted) {
+        return;
+      }
+      this.setState((state) => ({
+        messages: updateLocalDeliveryStatus(
+          state.messages,
+          message.client_id,
+          DELIVERY_STATUS.failed
+        ),
+      }));
     }
   };
 
-  scrollToBottom = () => {
+  retryTextMessage = (message) => {
+    this.setState(
+      (state) => ({
+        messages: updateLocalDeliveryStatus(
+          state.messages,
+          message.client_id,
+          DELIVERY_STATUS.sending
+        ),
+      }),
+      () => this.deliverTextMessage(message)
+    );
+  };
+
+  editFailedMessage = (message) => {
+    this.setState(
+      (state) => {
+        const textboxText = state.textboxText
+          ? `${message.data.text}\n${state.textboxText}`
+          : message.data.text;
+        this.persistDraft(textboxText);
+        return {
+          messages: removeLocalMessage(state.messages, message.client_id),
+          textboxText,
+        };
+      },
+      () => {
+        this.resizeComposer();
+        this.textareaRef.current?.focus();
+      }
+    );
+  };
+
+  scheduleConfirmationRefresh = (clientId) => {
+    const timer = window.setTimeout(() => {
+      this.confirmationTimers.delete(timer);
+      const needsConfirmation = this.state.messages.some(
+        (message) =>
+          message.client_id === clientId &&
+          message.deliveryStatus === DELIVERY_STATUS.sent
+      );
+      if (this.hasMounted && needsConfirmation) {
+        this.loadSessionHistory({ silent: true });
+      }
+    }, 1200);
+    this.confirmationTimers.add(timer);
+  };
+
+  receiveMessage = (incomingMessage) => {
+    const shouldFollow = this.isNearBottom();
+    this.setState(
+      (state) => {
+        const isKnown = state.messages.some((message) =>
+          messagesMatch(message, incomingMessage)
+        );
+        return {
+          messages: reconcileIncomingMessage(state.messages, incomingMessage),
+          hasUnseenMessages:
+            state.hasUnseenMessages || (!shouldFollow && !isKnown),
+        };
+      },
+      () => {
+        if (shouldFollow) {
+          this.scrollToBottom();
+        }
+      }
+    );
+  };
+
+  isNearBottom = () => {
+    const main = this.mainRef.current;
+    if (!main) {
+      return true;
+    }
+    return main.scrollHeight - main.scrollTop - main.clientHeight < 120;
+  };
+
+  handleMainScroll = () => {
+    if (this.state.hasUnseenMessages && this.isNearBottom()) {
+      this.setState({ hasUnseenMessages: false });
+    }
+  };
+
+  scrollToBottom = (behavior = "smooth") => {
     const main = this.mainRef.current;
     if (!main) {
       return;
     }
 
-    main.scrollTo({
-      top: main.scrollHeight,
-      behavior: "smooth",
+    window.requestAnimationFrame(() => {
+      main.scrollTo({
+        top: main.scrollHeight,
+        behavior,
+      });
+      if (this.state.hasUnseenMessages) {
+        this.setState({ hasUnseenMessages: false });
+      }
     });
   };
 
   render() {
     const sessionId = this.props.router.params.id;
-    const { connectionStatus, historyLoaded, messages, serversideConfig } =
-      this.state;
+    const {
+      connectionStatus,
+      hasUnseenMessages,
+      historyLoaded,
+      messages,
+      serversideConfig,
+      uploads,
+    } = this.state;
     const retentionDays = serversideConfig
       ? serversideConfig.messagesToKeep.ttl / 86400
       : null;
+    const sendingCount = messages.filter(
+      (message) => message.deliveryStatus === DELIVERY_STATUS.sending
+    ).length;
+    const failedCount = messages.filter(
+      (message) => message.deliveryStatus === DELIVERY_STATUS.failed
+    ).length;
+    const uploadSummary = summarizeUploadQueue(uploads);
+    const uploadsBusy = Boolean(
+      uploadSummary.queuedCount || uploadSummary.activeCount
+    );
 
     return (
       <div className="session-shell">
@@ -338,9 +714,18 @@ class Session extends React.Component {
           </div>
         </header>
 
-        <UploadProgress upload={this.state.uploadProgress} />
+        <UploadProgress
+          uploads={uploads}
+          onDismiss={this.dismissUploadQueue}
+          onRemove={this.removeQueuedUpload}
+          onRetry={this.retryUpload}
+        />
 
-        <main className="session-main" ref={this.mainRef}>
+        <main
+          className="session-main"
+          ref={this.mainRef}
+          onScroll={this.handleMainScroll}
+        >
           <div className="session-content">
             {!historyLoaded ? (
               <div className="session-loading" aria-label="Loading messages">
@@ -354,7 +739,12 @@ class Session extends React.Component {
                   <span>Session activity</span>
                 </div>
                 {messages.map((message) => (
-                  <Message message={message} key={message.id} />
+                  <Message
+                    message={message}
+                    key={message.client_id || message.id}
+                    onRetry={this.retryTextMessage}
+                    onEdit={this.editFailedMessage}
+                  />
                 ))}
               </div>
             ) : (
@@ -387,6 +777,16 @@ class Session extends React.Component {
         </main>
 
         <footer className="session-footer">
+          {hasUnseenMessages && (
+            <button
+              type="button"
+              className="jump-to-latest"
+              onClick={() => this.scrollToBottom()}
+            >
+              <IonIcon icon={arrowDownOutline} />
+              New activity
+            </button>
+          )}
           <div className="session-footer-inner">
             <div className="session-composer">
               <button
@@ -399,6 +799,7 @@ class Session extends React.Component {
                 <IonIcon icon={attachOutline} />
               </button>
               <textarea
+                ref={this.textareaRef}
                 rows="2"
                 value={this.state.textboxText}
                 placeholder="Write a message or paste an image…"
@@ -413,9 +814,7 @@ class Session extends React.Component {
                     this.sendTextMessage();
                   }
                 }}
-                onChange={(event) =>
-                  this.setState({ textboxText: event.target.value })
-                }
+                onChange={this.handleTextChange}
               />
               <button
                 type="button"
@@ -438,6 +837,23 @@ class Session extends React.Component {
                 <span className="keyboard-hint">
                   <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd> to send
                 </span>
+                {(sendingCount > 0 || failedCount > 0) && (
+                  <span
+                    className={`composer-delivery-summary ${
+                      failedCount ? "failed" : "sending"
+                    }`}
+                    role="status"
+                  >
+                    <span aria-hidden="true" />
+                    {failedCount
+                      ? `${failedCount} ${
+                          failedCount === 1 ? "message needs" : "messages need"
+                        } attention`
+                      : `Sending ${sendingCount} ${
+                          sendingCount === 1 ? "message" : "messages"
+                        }`}
+                  </span>
+                )}
               </div>
 
               {serversideConfig && (
@@ -449,6 +865,14 @@ class Session extends React.Component {
                   <button
                     type="button"
                     onClick={() => this.deleteEverythingInThisSession()}
+                    disabled={sendingCount > 0 || uploadsBusy}
+                    title={
+                      sendingCount
+                        ? "Wait for messages to finish sending"
+                        : uploadsBusy
+                        ? "Wait for uploads to finish"
+                        : "Clear this session"
+                    }
                   >
                     <IonIcon icon={trashOutline} />
                     Clear session
@@ -472,21 +896,46 @@ class Session extends React.Component {
     );
   }
 
-  loadSessionHistory() {
+  loadSessionHistory({ silent = false } = {}) {
+    const shouldFollow = !this.state.historyLoaded || this.isNearBottom();
+    const messagesAtRequest = this.state.messages;
     ApiClient.loadSessionHistory(this.props.router.params.id)
-      .then((messages) => {
+      .then((history) => {
         this.setState(
-          {
-            messages,
-            historyLoaded: true,
+          (state) => {
+            const hasNewMessages = history.some(
+              (historyMessage) =>
+                !state.messages.some((message) =>
+                  messagesMatch(message, historyMessage)
+                )
+            );
+            return {
+              messages: reconcileMessageHistory(
+                state.messages,
+                history,
+                messagesAtRequest
+              ),
+              historyLoaded: true,
+              hasUnseenMessages:
+                state.hasUnseenMessages || (!shouldFollow && hasNewMessages),
+            };
           },
-          this.scrollToBottom
+          () => {
+            if (shouldFollow) {
+              this.scrollToBottom(silent ? "smooth" : "auto");
+            }
+          }
         );
       })
       .catch((error) => {
         console.error("session history failed to load", error);
         this.setState({ historyLoaded: true });
-        toast("Could not load earlier session activity.", { duration: 3000 });
+        if (!silent) {
+          toast("Could not load earlier session activity.", {
+            duration: 4000,
+            tone: "error",
+          });
+        }
       });
   }
 
@@ -558,7 +1007,6 @@ class Session extends React.Component {
   }
 
   async displayCurlCmd() {
-    const swalContent = document.createElement("div");
     const sendTextCurl = `curl -X POST -F "text=your-text-here" -F "sessionId=${
       this.props.router.params.id
     }" ${stripTrailingSlash(API_BASE)}/text`;
@@ -566,53 +1014,53 @@ class Session extends React.Component {
       this.props.router.params.id
     }" ${stripTrailingSlash(API_BASE)}/file`;
 
-    let reactRoot;
-    sweetalert2.fire({
+    await showDialog({
+      icon: terminalOutline,
+      eyebrow: "Developer tools",
       title: "Command line access",
-      html: swalContent,
-      showConfirmButton: false,
-      showCloseButton: true,
-      didOpen: () => {
-        reactRoot = createRoot(swalContent);
-        reactRoot.render(
-          <div className="curl-commands">
-            <p>
-              Use the direct HTTP endpoints from scripts, terminals, and
-              automations. Click a command to copy it.
-            </p>
-            <button
-              type="button"
-              className="curl-command"
-              onClick={() => {
-                copy(sendTextCurl);
-                toast("Text command copied.");
-              }}
-            >
-              <span>
-                Send text <IonIcon icon={copyOutline} />
-              </span>
-              <code>{sendTextCurl}</code>
-            </button>
-            <button
-              type="button"
-              className="curl-command"
-              onClick={() => {
-                copy(sendFileCurl);
-                toast("File command copied.");
-              }}
-            >
-              <span>
-                Direct file upload · unencrypted
-                <IonIcon icon={copyOutline} />
-              </span>
-              <code>{sendFileCurl}</code>
-            </button>
-          </div>
-        );
-      },
-      willClose: () => {
-        reactRoot?.unmount();
-      },
+      description:
+        "Use the direct HTTP endpoints from scripts, terminals, and automations. Click a command to copy it.",
+      size: "wide",
+      hideConfirm: true,
+      content: (
+        <div className="curl-commands">
+          <button
+            type="button"
+            className="curl-command"
+            onClick={async () => {
+              try {
+                await copyText(sendTextCurl);
+                toast("Text command copied.", { tone: "success" });
+              } catch (error) {
+                toast("Could not copy the text command.", { tone: "error" });
+              }
+            }}
+          >
+            <span>
+              Send text <IonIcon icon={copyOutline} />
+            </span>
+            <code>{sendTextCurl}</code>
+          </button>
+          <button
+            type="button"
+            className="curl-command"
+            onClick={async () => {
+              try {
+                await copyText(sendFileCurl);
+                toast("File command copied.", { tone: "success" });
+              } catch (error) {
+                toast("Could not copy the file command.", { tone: "error" });
+              }
+            }}
+          >
+            <span>
+              Direct file upload · unencrypted
+              <IonIcon icon={copyOutline} />
+            </span>
+            <code>{sendFileCurl}</code>
+          </button>
+        </div>
+      ),
     });
   }
 
@@ -620,19 +1068,26 @@ class Session extends React.Component {
     const qrCodeDataURL = await this.generateQRCode(window.location.href);
 
     if (qrCodeDataURL) {
-      sweetalert2.fire({
-        imageUrl: qrCodeDataURL,
-        imageWidth: 360,
+      await showDialog({
+        icon: qrCodeOutline,
+        eyebrow: "Join from another device",
         title: "Open this session",
-        text: "Scan with another device to join instantly.",
-        showCloseButton: true,
-        showConfirmButton: false,
+        description: "Scan the code to open this exact session instantly.",
+        image: {
+          src: qrCodeDataURL,
+          alt: "QR code for this session",
+          variant: "qr",
+        },
+        size: "compact",
+        hideConfirm: true,
       });
     } else {
-      sweetalert2.fire({
-        icon: "error",
+      await showDialog({
+        tone: "error",
         title: "QR code unavailable",
-        text: "The QR code could not be generated. Copy the session link instead.",
+        description:
+          "The QR code could not be generated. Copy the session link instead.",
+        confirmLabel: "Close",
       });
     }
   }
