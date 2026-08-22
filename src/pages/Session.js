@@ -11,10 +11,16 @@ import "./Session.scss";
 import Message from "../components/Message.js";
 import { IonIcon } from "@ionic/react";
 import {
-  codeSlashSharp,
-  documentOutline,
-  paperPlaneOutline,
-  qrCodeSharp,
+  attachOutline,
+  cloudUploadOutline,
+  copyOutline,
+  imagesOutline,
+  linkOutline,
+  qrCodeOutline,
+  sendOutline,
+  swapHorizontalOutline,
+  terminalOutline,
+  trashOutline,
 } from "ionicons/icons/index.js";
 import QRCode from "qrcode";
 import sweetalert2 from "sweetalert2";
@@ -29,10 +35,67 @@ class Session extends React.Component {
     textboxText: "",
     serversideConfig: null,
     uploadProgress: null,
+    connectionStatus: "connecting",
+    historyLoaded: false,
+    isDraggingFiles: false,
   };
 
   socket = null;
   uploadQueue = Promise.resolve();
+  mainRef = React.createRef();
+  dragDepth = 0;
+
+  constructor(props) {
+    super(props);
+    this.socket = io(`${WEBSOCKET_BASE}`, {
+      extraHeaders: {
+        sessionId: props.router.params.id,
+      },
+    });
+
+    this.socket.on("connect", () => {
+      this.setState({ connectionStatus: "connected" });
+    });
+
+    this.socket.on("disconnect", () => {
+      this.setState({ connectionStatus: "offline" });
+      toast("Connection lost — trying to reconnect.", { duration: 3000 });
+    });
+
+    this.socket.on(NEW_MESSAGE, (...args) => {
+      this.setState(
+        (state) => ({
+          messages: [...state.messages, args[0]],
+        }),
+        this.scrollToBottom
+      );
+    });
+  }
+
+  componentDidMount() {
+    this.loadSessionHistory();
+    ApiClient.getServerSideConfig()
+      .then((serversideConfig) => {
+        this.setState({ serversideConfig });
+      })
+      .catch((error) => {
+        console.error("server configuration failed to load", error);
+      });
+    this.addDragDropListener();
+  }
+
+  componentWillUnmount() {
+    this.removeDragDropListener();
+    this.socket?.disconnect();
+  }
+
+  socketOps = {
+    postMessage: (message) => {
+      this.socket.emit(POST_MESSAGE, message);
+    },
+  };
+
+  removeDragDropListener = () => {};
 
   sendFile = () => {
     const input = document.createElement("input");
@@ -47,19 +110,36 @@ class Session extends React.Component {
     document.body.removeChild(input);
   };
 
+  copySessionLink = () => {
+    copy(window.location.href);
+    toast("Session link copied.", { duration: 2000 });
+  };
+
   async deleteEverythingInThisSession() {
-    if (
-      // eslint-disable-next-line no-restricted-globals
-      !confirm(
-        "Are you sure you want to delete everything in this session? This action cannot be undone."
-      )
-    ) {
+    const result = await sweetalert2.fire({
+      title: "Clear this session?",
+      text: "Every message and uploaded file in this session will be permanently removed.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Clear session",
+      cancelButtonText: "Keep everything",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed) {
       return;
     }
 
-    await ApiClient.deleteEverythingInSession(this.props.router.params.id);
-    toast("deleted");
-    this.setState({ messages: [] });
+    try {
+      await ApiClient.deleteEverythingInSession(this.props.router.params.id);
+      toast("Session cleared.", { duration: 2000 });
+      this.setState({ messages: [] });
+    } catch (error) {
+      console.error("session could not be cleared", error);
+      toast("Could not clear the session. Please try again.", {
+        duration: 3000,
+      });
+    }
   }
 
   uploadFiles = (files) => {
@@ -101,7 +181,9 @@ class Session extends React.Component {
         });
       } catch (error) {
         console.error("file upload failed", error);
-        toast(`Upload failed: ${inputFile.name} (${error.message})`);
+        toast(`Upload failed: ${inputFile.name} (${error.message})`, {
+          duration: 4000,
+        });
       }
     }
 
@@ -144,191 +226,321 @@ class Session extends React.Component {
   };
 
   sendTextMessage = async () => {
-    if (!this.state.textboxText) {
+    if (!this.state.textboxText.trim()) {
       return;
     }
-    await ApiClient.sendText(this.state.textboxText, {
-      sessionId: this.props.router.params.id,
-    });
-    this.setState({ textboxText: "" });
+
+    try {
+      await ApiClient.sendText(this.state.textboxText, {
+        sessionId: this.props.router.params.id,
+      });
+      this.setState({ textboxText: "" });
+    } catch (error) {
+      console.error("message send failed", error);
+      toast("Message could not be sent. Please try again.", {
+        duration: 3000,
+      });
+    }
   };
 
-  constructor(props) {
-    super(props);
-    this.socket = io(`${WEBSOCKET_BASE}`, {
-      extraHeaders: {
-        sessionId: props.router.params.id,
-      },
-    });
+  scrollToBottom = () => {
+    const main = this.mainRef.current;
+    if (!main) {
+      return;
+    }
 
-    this.socket.on("connect", () => {
-      toast("connected");
-      this.loadSessionHistory();
-    });
-
-    this.socket.on("disconnect", () => {
-      toast("disconnected");
-    });
-
-    this.socket.on(NEW_MESSAGE, (...args) => {
-      this.setState(
-        {
-          messages: [...this.state.messages, args[0]],
-        },
-        this.scrollToBottom
-      );
-    });
-  }
-
-  socketOps = {
-    postMessage: (message) => {
-      this.socket.emit(POST_MESSAGE, message);
-    },
-  };
-
-  removeDragDropListener = () => {};
-
-  componentDidMount() {
-    ApiClient.getServerSideConfig().then((serversideConfig) => {
-      this.setState({ serversideConfig });
-    });
-    this.addDragDropListener();
-  }
-
-  componentWillUnmount() {
-    this.removeDragDropListener();
-  }
-
-  scrollToBottom() {
-    const main = document.getElementsByClassName("session-main")[0];
-
-    // scroll smoothly to the bottom
     main.scrollTo({
       top: main.scrollHeight,
       behavior: "smooth",
     });
-  }
+  };
 
   render() {
+    const sessionId = this.props.router.params.id;
+    const { connectionStatus, historyLoaded, messages, serversideConfig } =
+      this.state;
+    const retentionDays = serversideConfig
+      ? serversideConfig.messagesToKeep.ttl / 86400
+      : null;
+
     return (
-      <>
-        <header>
-          <nav className="navbar navbar-expand-md navbar-dark fixed-top bg-dark justify-content-between">
-            <span className={"title"}>{this.props.router.params.id}</span>
-            <span className={"button"}>
-              <IonIcon
+      <div className="session-shell">
+        <header className="session-header">
+          <div className="session-header-inner">
+            <button
+              type="button"
+              className="session-brand"
+              onClick={() => this.props.router.navigate("/")}
+              aria-label="Back to Transfer home"
+            >
+              <span className="session-brand-mark" aria-hidden="true">
+                <IonIcon icon={swapHorizontalOutline} />
+              </span>
+              <span>Transfer</span>
+            </button>
+
+            <div className="session-identity">
+              <div className="session-identity-label">
+                <span>SESSION</span>
+                <span className={`connection-state ${connectionStatus}`}>
+                  <span />
+                  {connectionStatus === "connected"
+                    ? "Connected"
+                    : connectionStatus === "offline"
+                    ? "Reconnecting"
+                    : "Connecting"}
+                </span>
+              </div>
+              <div className="session-id-row">
+                <h1 title={sessionId}>{sessionId}</h1>
+                <button
+                  type="button"
+                  className="session-copy-link"
+                  onClick={this.copySessionLink}
+                  aria-label="Copy session link"
+                  title="Copy session link"
+                >
+                  <IonIcon icon={copyOutline} />
+                </button>
+              </div>
+            </div>
+
+            <nav className="session-actions" aria-label="Session actions">
+              <button
+                type="button"
                 onClick={() => this.displayCurlCmd()}
-                icon={codeSlashSharp}
-              ></IonIcon>
-              <IonIcon
+                aria-label="Command line access"
+                title="Command line access"
+              >
+                <IonIcon icon={terminalOutline} />
+                <span>CLI</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => this.displayQRCode()}
-                icon={qrCodeSharp}
-              ></IonIcon>
-            </span>
-          </nav>
+                aria-label="Show session QR code"
+                title="Show session QR code"
+              >
+                <IonIcon icon={qrCodeOutline} />
+                <span>QR code</span>
+              </button>
+              <button
+                type="button"
+                className="share-link-action"
+                onClick={this.copySessionLink}
+                aria-label="Copy session link"
+                title="Copy session link"
+              >
+                <IonIcon icon={linkOutline} />
+                <span>Copy link</span>
+              </button>
+            </nav>
+          </div>
         </header>
 
         <UploadProgress upload={this.state.uploadProgress} />
 
-        <main className="session-main">
-          <div className="container">
-            {this.state.messages.map((message) => (
-              <Message message={message} key={message.id} />
-            ))}
+        <main className="session-main" ref={this.mainRef}>
+          <div className="session-content">
+            {!historyLoaded ? (
+              <div className="session-loading" aria-label="Loading messages">
+                <span />
+                <span />
+                <span />
+              </div>
+            ) : messages.length ? (
+              <div className="session-message-list">
+                <div className="message-day-divider">
+                  <span>Session activity</span>
+                </div>
+                {messages.map((message) => (
+                  <Message message={message} key={message.id} />
+                ))}
+              </div>
+            ) : (
+              <div className="session-empty-state">
+                <div className="empty-state-icon">
+                  <IonIcon icon={cloudUploadOutline} />
+                </div>
+                <span className="empty-state-eyebrow">
+                  YOUR SESSION IS READY
+                </span>
+                <h2>Send something worth sharing.</h2>
+                <p>
+                  Drop files anywhere, paste an image, or write a note below.
+                  Everything shared here appears instantly for anyone with the
+                  link.
+                </p>
+                <div className="empty-state-actions">
+                  <button type="button" onClick={this.sendFile}>
+                    <IonIcon icon={attachOutline} />
+                    Choose files
+                  </button>
+                  <button type="button" onClick={this.copySessionLink}>
+                    <IonIcon icon={linkOutline} />
+                    Invite someone
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-
-          <div style={{ height: 36 }}></div>
         </main>
 
-        <footer className="session-footer container">
-          <div className="container">
-            <div className="row">
-              {!!this.state.serversideConfig && (
-                <div className={"message-retention-warning"}>
-                  Only the most recent{" "}
-                  {this.state.serversideConfig.messagesToKeep.maxCount} messages
-                  within a{" "}
-                  {this.state.serversideConfig.messagesToKeep.ttl / 86400}-day
-                  window are preserved <br />
+        <footer className="session-footer">
+          <div className="session-footer-inner">
+            <div className="session-composer">
+              <button
+                type="button"
+                className="send-file-btn composer-attach"
+                onClick={this.sendFile}
+                aria-label="Upload files"
+                title="Upload files"
+              >
+                <IonIcon icon={attachOutline} />
+              </button>
+              <textarea
+                rows="2"
+                value={this.state.textboxText}
+                placeholder="Write a message or paste an image…"
+                aria-label="Message"
+                onPaste={this.handlePaste}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    (event.metaKey || event.ctrlKey)
+                  ) {
+                    event.preventDefault();
+                    this.sendTextMessage();
+                  }
+                }}
+                onChange={(event) =>
+                  this.setState({ textboxText: event.target.value })
+                }
+              />
+              <button
+                type="button"
+                className="send-text-btn composer-send"
+                onClick={this.sendTextMessage}
+                disabled={!this.state.textboxText.trim()}
+                aria-label="Send message"
+                title="Send message"
+              >
+                <IonIcon icon={sendOutline} />
+              </button>
+            </div>
+
+            <div className="composer-details">
+              <div className="composer-hints">
+                <span>
+                  <IonIcon icon={imagesOutline} />
+                  Paste images
+                </span>
+                <span className="keyboard-hint">
+                  <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd> to send
+                </span>
+              </div>
+
+              {serversideConfig && (
+                <div className="retention-summary">
+                  <span>
+                    Latest {serversideConfig.messagesToKeep.maxCount} items ·{" "}
+                    {retentionDays}-day retention
+                  </span>
                   <button
                     type="button"
-                    className="btn btn-link p-0"
                     onClick={() => this.deleteEverythingInThisSession()}
                   >
-                    Delete everything in this session immediately
+                    <IonIcon icon={trashOutline} />
+                    Clear session
                   </button>
                 </div>
               )}
-              <div className="col flex-column flex-grow-0">
-                <button
-                  className="send-file-btn btn btn-sm btn-secondary"
-                  onClick={() => this.sendFile()}
-                >
-                  <IonIcon icon={documentOutline}></IonIcon>
-                </button>
-              </div>
-              <div className="col flex-column flex-grow-1">
-                <textarea
-                  className="form-control"
-                  rows="2"
-                  style={{ resize: "none" }}
-                  value={this.state.textboxText}
-                  onPaste={this.handlePaste}
-                  onKeyDown={(e) => {
-                    if (e.keyCode === 13 && e.metaKey) {
-                      this.sendTextMessage();
-                    }
-                  }}
-                  onChange={(e) =>
-                    this.setState({
-                      textboxText: e.target.value,
-                    })
-                  }
-                ></textarea>
-              </div>
-
-              <div className="col flex-column flex-grow-0">
-                <button
-                  className="send-text-btn btn btn-sm btn-primary"
-                  onClick={() => this.sendTextMessage()}
-                >
-                  <IonIcon icon={paperPlaneOutline}></IonIcon>
-                </button>
-              </div>
             </div>
           </div>
         </footer>
-      </>
+
+        {this.state.isDraggingFiles && (
+          <div className="drop-overlay" aria-hidden="true">
+            <div>
+              <IonIcon icon={cloudUploadOutline} />
+              <strong>Drop to upload</strong>
+              <span>Your files will be encrypted and sent to this session</span>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
   loadSessionHistory() {
-    ApiClient.loadSessionHistory(this.props.router.params.id).then(
-      (messages) => {
+    ApiClient.loadSessionHistory(this.props.router.params.id)
+      .then((messages) => {
         this.setState(
           {
             messages,
+            historyLoaded: true,
           },
           this.scrollToBottom
         );
-      }
-    );
+      })
+      .catch((error) => {
+        console.error("session history failed to load", error);
+        this.setState({ historyLoaded: true });
+        toast("Could not load earlier session activity.", { duration: 3000 });
+      });
   }
 
   addDragDropListener = () => {
-    let dragoverListener = function (event) {
-      event.preventDefault();
-    };
-    document.addEventListener("dragover", dragoverListener);
+    const hasFiles = (event) =>
+      Array.from(event.dataTransfer?.types || []).includes("Files");
 
-    let dropListener = (event) => {
+    const dragenterListener = (event) => {
+      if (!hasFiles(event)) {
+        return;
+      }
       event.preventDefault();
-      this.uploadFiles(event.dataTransfer.files);
+      this.dragDepth += 1;
+      this.setState({ isDraggingFiles: true });
     };
+
+    const dragoverListener = (event) => {
+      if (hasFiles(event)) {
+        event.preventDefault();
+      }
+    };
+
+    const dragleaveListener = (event) => {
+      if (this.dragDepth === 0) {
+        return;
+      }
+      event.preventDefault();
+      this.dragDepth = Math.max(0, this.dragDepth - 1);
+      if (this.dragDepth === 0) {
+        this.setState({ isDraggingFiles: false });
+      }
+    };
+
+    const dropListener = (event) => {
+      if (!hasFiles(event) && this.dragDepth === 0) {
+        return;
+      }
+      event.preventDefault();
+      this.dragDepth = 0;
+      this.setState({ isDraggingFiles: false });
+      if (event.dataTransfer.files.length) {
+        this.uploadFiles(event.dataTransfer.files);
+      }
+    };
+
+    document.addEventListener("dragenter", dragenterListener);
+    document.addEventListener("dragover", dragoverListener);
+    document.addEventListener("dragleave", dragleaveListener);
     document.addEventListener("drop", dropListener);
 
     this.removeDragDropListener = () => {
+      document.removeEventListener("dragenter", dragenterListener);
       document.removeEventListener("dragover", dragoverListener);
+      document.removeEventListener("dragleave", dragleaveListener);
       document.removeEventListener("drop", dropListener);
     };
   };
@@ -336,9 +548,9 @@ class Session extends React.Component {
   async generateQRCode(url) {
     try {
       const canvas = await QRCode.toCanvas(url, {
-        width: 360 * 2,
+        width: 720,
       });
-      return canvas.toDataURL(); // Convert the canvas to a data URL
+      return canvas.toDataURL();
     } catch (error) {
       console.error("Error generating QR code:", error);
       return null;
@@ -356,57 +568,71 @@ class Session extends React.Component {
 
     let reactRoot;
     sweetalert2.fire({
-      title: swalContent,
+      title: "Command line access",
+      html: swalContent,
+      showConfirmButton: false,
+      showCloseButton: true,
       didOpen: () => {
         reactRoot = createRoot(swalContent);
         reactRoot.render(
           <div className="curl-commands">
             <p>
-              Send messages to this session using the following curl command:
+              Use the direct HTTP endpoints from scripts, terminals, and
+              automations. Click a command to copy it.
             </p>
-            <pre
+            <button
+              type="button"
+              className="curl-command"
               onClick={() => {
                 copy(sendTextCurl);
-                toast("Copied to clipboard");
+                toast("Text command copied.");
               }}
             >
-              {sendTextCurl}
-            </pre>
-            <hr />
-            <p>Send a file to this session using the following curl command:</p>
-            <pre
+              <span>
+                Send text <IonIcon icon={copyOutline} />
+              </span>
+              <code>{sendTextCurl}</code>
+            </button>
+            <button
+              type="button"
+              className="curl-command"
               onClick={() => {
                 copy(sendFileCurl);
-                toast("Copied to clipboard");
+                toast("File command copied.");
               }}
             >
-              {sendFileCurl}
-            </pre>
+              <span>
+                Direct file upload · unencrypted
+                <IonIcon icon={copyOutline} />
+              </span>
+              <code>{sendFileCurl}</code>
+            </button>
           </div>
         );
       },
       willClose: () => {
-        reactRoot.unmount();
+        reactRoot?.unmount();
       },
     });
   }
 
   async displayQRCode() {
-    const url = window.location.href;
-    const qrCodeDataURL = await this.generateQRCode(url);
+    const qrCodeDataURL = await this.generateQRCode(window.location.href);
 
     if (qrCodeDataURL) {
       sweetalert2.fire({
         imageUrl: qrCodeDataURL,
         imageWidth: 360,
-        title: "Scan this QR code to join the session",
+        title: "Open this session",
+        text: "Scan with another device to join instantly.",
         showCloseButton: true,
+        showConfirmButton: false,
       });
     } else {
       sweetalert2.fire({
         icon: "error",
-        title: "Error",
-        text: "Unable to generate QR code.",
+        title: "QR code unavailable",
+        text: "The QR code could not be generated. Copy the session link instead.",
       });
     }
   }

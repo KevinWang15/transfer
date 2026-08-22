@@ -1,40 +1,184 @@
 .message {
-  .datetime {
-    color: #999;
-    font-size: 12px;
-    margin-bottom: 5px;
-  }
-
-  .content {
-    cursor: pointer;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-    background-color: #fff1;
-    border-radius: 5px;
-    margin-bottom: 10px;
-    padding: 10px;
-    position: relative;
-  }
-
-  .file-icon, .link-icon {
-    margin-left: 2px;
-    margin-right: 8px;
-    opacity: 0.3;
-    position: relative;
-    top: 1px;
-  }
-
-  .link-icon {
-    position: absolute;
-    right: 6px;
-    top: 10px;
-    opacity: 0.4;
-    zoom: 1.2;
-
-    &:hover {
-      opacity: 1;
-    }
-  }
-
   position: relative;
   width: 100%;
+  margin-bottom: 18px;
+}
+
+.message-meta {
+  display: flex;
+  margin-bottom: 7px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+
+  > span {
+    text-transform: uppercase;
+  }
+
+  time {
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+}
+
+.message-card {
+  width: 100%;
+  color: var(--text-primary);
+  background: rgba(19, 23, 35, 0.82);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+.message-primary-action {
+  display: grid;
+  width: 100%;
+  min-height: 66px;
+  padding: 12px 14px;
+  grid-template-columns: 40px minmax(0, 1fr) 30px;
+  gap: 13px;
+  align-items: center;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: inherit;
+  transition: background 150ms ease, border-color 150ms ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.025);
+
+    .message-trailing-icon {
+      color: var(--accent-bright);
+      background: rgba(110, 100, 245, 0.1);
+    }
+  }
+}
+
+.message-type-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  color: #9e98ff;
+  background: rgba(111, 101, 243, 0.1);
+  border: 1px solid rgba(126, 116, 255, 0.1);
+  border-radius: 11px;
+
+  ion-icon {
+    width: 19px;
+    height: 19px;
+  }
+}
+
+.message-trailing-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--text-faint);
+  border-radius: 9px;
+  transition: color 150ms ease, background 150ms ease;
+
+  ion-icon {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.message-text-content {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.file-message-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: stretch;
+}
+
+.file-primary-action {
+  min-width: 0;
+}
+
+.file-message-copy {
+  min-width: 0;
+
+  strong,
+  span {
+    display: block;
+  }
+
+  strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 640;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    margin-top: 4px;
+    color: var(--text-faint);
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+}
+
+.file-copy-action {
+  display: grid;
+  width: 48px;
+  margin: 9px 0;
+  place-items: center;
+  color: var(--text-faint);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+
+  ion-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    color: var(--accent-bright);
+  }
+}
+
+.message-unknown .message-card {
+  padding: 14px;
+
+  pre {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    white-space: pre-wrap;
+  }
+}
+
+@media (max-width: 520px) {
+  .message {
+    margin-bottom: 16px;
+  }
+
+  .message-primary-action {
+    padding: 10px;
+    grid-template-columns: 36px minmax(0, 1fr) 28px;
+    gap: 10px;
+  }
+
+  .message-type-icon {
+    width: 36px;
+    height: 36px;
+  }
 }

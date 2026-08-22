@@ -1,90 +1,128 @@
 import React from "react";
 import { IonIcon } from "@ionic/react";
-import { documentOutline, linkOutline } from "ionicons/icons/index.js";
+import {
+  copyOutline,
+  documentOutline,
+  documentTextOutline,
+  downloadOutline,
+  linkOutline,
+} from "ionicons/icons/index.js";
 import copy from "copy-to-clipboard";
 import toast from "../utils/toast.js";
 import { API_BASE } from "../apiclient/apiClient.js";
 import "./Message.scss";
 import { formatDate } from "../utils/date.js";
 
-class Message extends React.Component {
-  render() {
-    switch (this.props.message.data.type) {
-      case "text":
-        return <TextMessage {...this.props} />;
-      case "file":
-        return <FileMessage {...this.props} />;
-      default:
-        return <div>{JSON.stringify(this.props.message.data)}</div>;
-    }
+export default function Message({ message }) {
+  switch (message.data.type) {
+    case "text":
+      return <TextMessage message={message} />;
+    case "file":
+      return <FileMessage message={message} />;
+    default:
+      return <UnknownMessage message={message} />;
   }
 }
 
-class BaseMessage extends React.Component {
-  render() {
-    return (
-      <div className="message" style={{ whiteSpace: "pre-wrap" }}>
-        <div className="datetime">
-          {formatDate(new Date(this.props.message.created_at))}
-        </div>
-        <div className="content" onClick={this.props.onClick}>
-          {this.props.renderContent()}
-        </div>
+function MessageMeta({ label, createdAt }) {
+  const createdDate = new Date(createdAt);
+  return (
+    <div className="message-meta">
+      <span>{label}</span>
+      <time dateTime={createdDate.toISOString()}>
+        {formatDate(createdDate)}
+      </time>
+    </div>
+  );
+}
+
+function TextMessage({ message }) {
+  const copyText = () => {
+    copy(message.data.text);
+    toast("Message copied.");
+  };
+
+  return (
+    <article className="message message-text">
+      <MessageMeta label="Shared note" createdAt={message.created_at} />
+      <button
+        type="button"
+        className="message-card message-primary-action"
+        onClick={copyText}
+        aria-label="Copy shared note"
+      >
+        <span className="message-type-icon" aria-hidden="true">
+          <IonIcon icon={documentTextOutline} />
+        </span>
+        <span className="message-text-content">{message.data.text}</span>
+        <span className="message-trailing-icon" aria-hidden="true">
+          <IonIcon icon={copyOutline} />
+        </span>
+      </button>
+    </article>
+  );
+}
+
+function FileMessage({ message }) {
+  const filename = message.data.filename;
+  const url = `${API_BASE}attachments/${
+    message.data.access_key
+  }?fileName=${encodeURIComponent(filename)}`;
+  const extension = filename.includes(".")
+    ? filename.split(".").pop().toUpperCase()
+    : null;
+
+  const openFile = () => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const copyLink = () => {
+    copy(url);
+    toast("File link copied.");
+  };
+
+  return (
+    <article className="message message-file">
+      <MessageMeta label="File attachment" createdAt={message.created_at} />
+      <div className="message-card file-message-card">
+        <button
+          type="button"
+          className="message-primary-action file-primary-action"
+          onClick={openFile}
+          title={filename}
+        >
+          <span className="message-type-icon" aria-hidden="true">
+            <IonIcon icon={documentOutline} />
+          </span>
+          <span className="file-message-copy">
+            <strong>{filename}</strong>
+            <span>{extension ? `${extension} file` : "File attachment"}</span>
+          </span>
+          <span className="message-trailing-icon" aria-hidden="true">
+            <IonIcon icon={downloadOutline} />
+          </span>
+        </button>
+        <button
+          type="button"
+          className="file-copy-action"
+          onClick={copyLink}
+          aria-label={`Copy link to ${filename}`}
+          title="Copy file link"
+        >
+          <IonIcon icon={linkOutline} />
+        </button>
       </div>
-    );
-  }
+    </article>
+  );
 }
 
-class TextMessage extends React.Component {
-  render() {
-    return (
-      <BaseMessage
-        {...this.props}
-        onClick={() => {
-          copy(this.props.message.data.text);
-          toast("copied");
-        }}
-        renderContent={() => this.props.message.data.text}
-      />
-    );
-  }
+function UnknownMessage({ message }) {
+  return (
+    <article className="message message-unknown">
+      <MessageMeta label="Session update" createdAt={message.created_at} />
+      <div className="message-card">
+        <pre>{JSON.stringify(message.data, null, 2)}</pre>
+      </div>
+    </article>
+  );
 }
-
-class FileMessage extends React.Component {
-  render() {
-    const url = `${API_BASE}attachments/${
-      this.props.message.data.access_key
-    }?fileName=${encodeURIComponent(this.props.message.data.filename)}`;
-    return (
-      <BaseMessage
-        onClick={() => {
-          window.open(url);
-        }}
-        {...this.props}
-        renderContent={() => (
-          <div
-            style={{
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            <IonIcon className={"file-icon"} icon={documentOutline}></IonIcon>
-            {this.props.message.data.filename}
-            <IonIcon
-              className={"link-icon"}
-              icon={linkOutline}
-              onClick={(e) => {
-                e.stopPropagation();
-                copy(url);
-                toast("Link copied to clipboard");
-              }}
-            ></IonIcon>
-          </div>
-        )}
-      />
-    );
-  }
-}
-
-export default Message;
