@@ -22,8 +22,22 @@ import { decrypt } from "./utils/decryption.js";
 import { encryptUploadResponse } from "./utils/encryption.js";
 import createUploadRouter from "./routes/uploadRoutes.js";
 import { startPeriodicUploadCleanup } from "./services/UploadService.js";
+import { createTransferMcpHandler } from "./services/McpService.js";
 
 const app = express();
+
+const mcp = createTransferMcpHandler({ getIo: () => io });
+app.all("/mcp", (req, res) => {
+  if (req.headers.origin) {
+    res.status(403).json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Browser origins are not allowed" },
+      id: null,
+    });
+    return;
+  }
+  void mcp.handle(req, res);
+});
 
 app.use(express.json());
 app.use(cors());
@@ -136,6 +150,7 @@ app.get("*", (req, res) => {
 });
 
 const httpServer = http.createServer(app);
+httpServer.on("close", () => void mcp.close());
 
 const io = new SocketIOServer(httpServer, {
   cors: {

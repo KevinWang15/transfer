@@ -8,6 +8,10 @@ import path from "node:path";
 import sqlite3 from "sqlite3";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 
 import {
   UPLOAD_ENCRYPTION_OVERHEAD_BYTES,
@@ -555,6 +559,75 @@ test("curl API returns a download URL and supports history cleanup", async (t) =
   ).then((response) => response.json());
   assert.deepEqual(emptyHistory, []);
   assert.equal((await fetch(upload.url)).status, 404);
+});
+
+test("MCP tools interact with sessions over Streamable HTTP", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+
+  const client = new Client({ name: "transfer-test", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(
+    new URL(`${server.baseUrl}mcp`)
+  );
+  await client.connect(transport);
+  t.after(() => client.close());
+
+  const tools = await client.listTools();
+  assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
+    "clear_session",
+    "get_session_history",
+    "send_text",
+    "upload_file",
+  ]);
+
+  const sessionId = "mcp-integration-test";
+  const sent = await client.callTool({
+    name: "send_text",
+    arguments: { sessionId, text: "Hello from an MCP client" },
+  });
+  assert.equal(sent.structuredContent.success, true);
+
+  const uploaded = await client.callTool({
+    name: "upload_file",
+    arguments: {
+      sessionId,
+      filename: "agent note.txt",
+      contentBase64: Buffer.from("MCP attachment").toString("base64"),
+    },
+  });
+  assert.equal(uploaded.structuredContent.success, true);
+  assert.equal(
+    await fetch(uploaded.structuredContent.url).then((r) => r.text()),
+    "MCP attachment"
+  );
+
+  const history = await client.callTool({
+    name: "get_session_history",
+    arguments: { sessionId },
+  });
+  assert.equal(history.structuredContent.messages.length, 2);
+  assert.equal(
+    history.structuredContent.messages[1].data.url,
+    uploaded.structuredContent.url
+  );
+
+  const cleared = await client.callTool({
+    name: "clear_session",
+    arguments: { sessionId },
+  });
+  assert.equal(cleared.structuredContent.success, true);
+
+  const empty = await client.callTool({
+    name: "get_session_history",
+    arguments: { sessionId },
+  });
+  assert.deepEqual(empty.structuredContent.messages, []);
+
+  const browserRequest = await fetch(`${server.baseUrl}mcp`, {
+    method: "POST",
+    headers: { Origin: "https://example.com" },
+  });
+  assert.equal(browserRequest.status, 403);
 });
 
 test("message idempotency migrates an existing database without losing history", async (t) => {

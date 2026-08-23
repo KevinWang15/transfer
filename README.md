@@ -37,6 +37,20 @@ curl http://localhost:6611/sessions/SESSION_ID/history
 curl -X DELETE http://localhost:6611/sessions/SESSION_ID/history
 ```
 
+## MCP
+
+AI agents can connect to the Streamable HTTP MCP endpoint at:
+
+```text
+http://localhost:6611/mcp
+```
+
+The MCP server exposes `send_text`, `upload_file`, `get_session_history`, and
+`clear_session`. MCP uploads accept base64 content up to 10 MiB; use the curl
+API for larger files. Transfer session IDs act as capability secrets, so do not
+share an MCP-enabled deployment or session ID with untrusted clients. Browser
+`Origin` requests to `/mcp` are rejected to prevent cross-site access.
+
 ## Large file uploads
 
 Browser uploads are split into independently authenticated AES-GCM envelopes. A
