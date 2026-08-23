@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useId, useLayoutEffect, useRef, useState } from "react";
 import { IonIcon } from "@ionic/react";
 import {
   alertCircleOutline,
   checkmarkCircleOutline,
+  chevronDownOutline,
+  chevronUpOutline,
   copyOutline,
   createOutline,
   documentOutline,
@@ -58,9 +60,47 @@ function MessageMeta({ label, createdAt, deliveryStatus }) {
 
 function TextMessage({ message, onRetry, onEdit }) {
   const deliveryStatus = message.deliveryStatus;
+  const text = String(message.data.text ?? "");
+  const contentId = useId();
+  const viewportRef = useRef(null);
+  const [isCollapsible, setIsCollapsible] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isCollapsed = !isExpanded && isCollapsible !== false;
+  const lineCount = text.split(/\r\n?|\n/).length;
+  const extentLabel =
+    lineCount > 1
+      ? `${lineCount.toLocaleString()} lines`
+      : `${text.length.toLocaleString()} characters`;
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return undefined;
+    }
+
+    setIsExpanded(false);
+    const measure = () => {
+      const lineHeight = Number.parseFloat(
+        window.getComputedStyle(viewport).lineHeight
+      );
+      const collapsedHeight = lineHeight * 10;
+      setIsCollapsible(viewport.scrollHeight > collapsedHeight + 1);
+    };
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [text]);
+
   const copyMessage = async () => {
     try {
-      await copyText(message.data.text);
+      await copyText(text);
       toast("Message copied.", { tone: "success" });
     } catch (error) {
       toast("Could not copy the message.", { tone: "error" });
@@ -78,35 +118,60 @@ function TextMessage({ message, onRetry, onEdit }) {
         createdAt={message.created_at}
         deliveryStatus={deliveryStatus}
       />
-      <button
-        type="button"
-        className="message-card message-primary-action"
-        onClick={copyMessage}
-        aria-label="Copy shared note"
+      <div
+        className={`message-card text-message-card ${
+          isCollapsible ? "has-overflow" : ""
+        } ${isExpanded ? "is-expanded" : ""}`}
       >
-        <span className="message-type-icon" aria-hidden="true">
-          <IonIcon icon={documentTextOutline} />
-        </span>
-        <span className="message-text-content">{message.data.text}</span>
-        <span
-          className={`message-trailing-icon ${
-            deliveryStatus ? `delivery-${deliveryStatus}` : ""
-          }`}
-          aria-hidden="true"
-        >
-          <IonIcon
-            icon={
-              deliveryStatus === "sending"
-                ? timeOutline
-                : deliveryStatus === "sent"
-                ? checkmarkCircleOutline
-                : deliveryStatus === "failed"
-                ? alertCircleOutline
-                : copyOutline
+        <div className="message-primary-action text-message-layout">
+          <span className="message-type-icon" aria-hidden="true">
+            <IonIcon icon={documentTextOutline} />
+          </span>
+          <span
+            ref={viewportRef}
+            className={`message-text-viewport ${
+              isCollapsed ? "is-collapsed" : "is-expanded"
+            }`}
+          >
+            <span id={contentId} className="message-text-content">
+              {text}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="message-copy-action"
+            onClick={copyMessage}
+            aria-label={
+              isCollapsible ? "Copy full shared note" : "Copy shared note"
             }
-          />
-        </span>
-      </button>
+            title="Copy message"
+          >
+            <IonIcon icon={copyOutline} />
+          </button>
+        </div>
+        {isCollapsible && (
+          <button
+            type="button"
+            className="message-expand-action"
+            onClick={() => {
+              if (isExpanded) {
+                viewportRef.current?.scrollTo({ top: 0 });
+              }
+              setIsExpanded((current) => !current);
+            }}
+            aria-expanded={isExpanded}
+            aria-controls={contentId}
+          >
+            <span>
+              <IonIcon
+                icon={isExpanded ? chevronUpOutline : chevronDownOutline}
+              />
+              {isExpanded ? "Collapse message" : "Show full message"}
+            </span>
+            <small>{extentLabel}</small>
+          </button>
+        )}
+      </div>
       {deliveryStatus === "failed" && (
         <div className="message-failure-actions">
           <span>The message didn’t reach the server.</span>
