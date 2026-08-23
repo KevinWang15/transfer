@@ -1013,6 +1013,22 @@ class Session extends React.Component {
     const sendFileCurl = `curl -X POST -F "file=@path-to-your-file" -F "sessionId=${
       this.props.router.params.id
     }" ${stripTrailingSlash(API_BASE)}/file`;
+    const historyCurl = `curl ${stripTrailingSlash(API_BASE)}/sessions/${
+      this.props.router.params.id
+    }/history`;
+    const cleanupCurl = `curl -X DELETE ${stripTrailingSlash(
+      API_BASE
+    )}/sessions/${this.props.router.params.id}/history`;
+
+    const curlCommands = [
+      { label: "Send text", command: sendTextCurl },
+      {
+        label: "Direct file upload · returns download URL",
+        command: sendFileCurl,
+      },
+      { label: "Get session history", command: historyCurl },
+      { label: "Delete session history and files", command: cleanupCurl },
+    ];
 
     await showDialog({
       icon: terminalOutline,
@@ -1024,41 +1040,26 @@ class Session extends React.Component {
       hideConfirm: true,
       content: (
         <div className="curl-commands">
-          <button
-            type="button"
-            className="curl-command"
-            onClick={async () => {
-              try {
-                await copyText(sendTextCurl);
-                toast("Text command copied.", { tone: "success" });
-              } catch (error) {
-                toast("Could not copy the text command.", { tone: "error" });
-              }
-            }}
-          >
-            <span>
-              Send text <IonIcon icon={copyOutline} />
-            </span>
-            <code>{sendTextCurl}</code>
-          </button>
-          <button
-            type="button"
-            className="curl-command"
-            onClick={async () => {
-              try {
-                await copyText(sendFileCurl);
-                toast("File command copied.", { tone: "success" });
-              } catch (error) {
-                toast("Could not copy the file command.", { tone: "error" });
-              }
-            }}
-          >
-            <span>
-              Direct file upload · unencrypted
-              <IonIcon icon={copyOutline} />
-            </span>
-            <code>{sendFileCurl}</code>
-          </button>
+          {curlCommands.map(({ label, command }) => (
+            <button
+              type="button"
+              className="curl-command"
+              key={label}
+              onClick={async () => {
+                try {
+                  await copyText(command);
+                  toast("Command copied.", { tone: "success" });
+                } catch (error) {
+                  toast("Could not copy the command.", { tone: "error" });
+                }
+              }}
+            >
+              <span>
+                {label} <IonIcon icon={copyOutline} />
+              </span>
+              <code>{command}</code>
+            </button>
+          ))}
         </div>
       ),
     });

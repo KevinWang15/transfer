@@ -507,6 +507,56 @@ test("encrypted text retries are opaque and idempotent", async (t) => {
   assert.equal(JSON.parse(history[0].data).text, message.text);
 });
 
+test("curl API returns a download URL and supports history cleanup", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+
+  const sessionId = "curl-api-test";
+  const filename = "curl file #1.txt";
+  const contents = "uploaded from curl";
+  const form = new FormData();
+  form.set("sessionId", sessionId);
+  form.set("name", filename);
+  form.set("file", new Blob([contents]), "local-name.txt");
+
+  const uploadResponse = await fetch(`${server.baseUrl}file`, {
+    method: "POST",
+    body: form,
+  });
+  assert.equal(uploadResponse.status, 200, server.diagnostics());
+  const upload = await uploadResponse.json();
+  assert.equal(upload.success, true);
+  assert.equal(typeof upload.messageId, "number");
+  assert.equal(typeof upload.accessKey, "string");
+  assert.equal(new URL(upload.url).origin, new URL(server.baseUrl).origin);
+  assert.equal(new URL(upload.url).searchParams.get("fileName"), filename);
+
+  const downloadResponse = await fetch(upload.url);
+  assert.equal(downloadResponse.status, 200);
+  assert.equal(await downloadResponse.text(), contents);
+
+  const historyResponse = await fetch(
+    `${server.baseUrl}sessions/${sessionId}/history`
+  );
+  assert.equal(historyResponse.status, 200);
+  const history = await historyResponse.json();
+  assert.equal(history.length, 1);
+  assert.equal(JSON.parse(history[0].data).filename, filename);
+
+  const cleanupResponse = await fetch(
+    `${server.baseUrl}sessions/${sessionId}/history`,
+    { method: "DELETE" }
+  );
+  assert.equal(cleanupResponse.status, 200);
+  assert.deepEqual(await cleanupResponse.json(), { success: true });
+
+  const emptyHistory = await fetch(
+    `${server.baseUrl}sessions/${sessionId}/history`
+  ).then((response) => response.json());
+  assert.deepEqual(emptyHistory, []);
+  assert.equal((await fetch(upload.url)).status, 404);
+});
+
 test("message idempotency migrates an existing database without losing history", async (t) => {
   const server = await startServer({}, (workingDirectory) =>
     createLegacyMessageDatabase(path.join(workingDirectory, "data/db.sqlite3"))

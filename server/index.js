@@ -32,8 +32,15 @@ app.get("/sessions/:id/history", async (req, res) => {
   res.send(await listMessagesBySessionId(req.params.id));
 });
 
+app.delete("/sessions/:id/history", async (req, res) => {
+  await clearMessagesBySessionId(req.params.id);
+  res.json({ success: true });
+});
+
+// Kept for clients using the original cleanup URL.
 app.get("/sessions/:id/clear_messages", async (req, res) => {
-  res.send(await clearMessagesBySessionId(req.params.id));
+  await clearMessagesBySessionId(req.params.id);
+  res.json({ success: true });
 });
 
 app.get("/serverside-config", async (req, res) => {
@@ -73,12 +80,23 @@ app.post(
         created_at: +new Date(),
       });
 
-      await MessageService.addMessage(newMessage, {
+      const savedMessage = await MessageService.addMessage(newMessage, {
         sessionId: req.body.sessionId,
         io,
       });
 
-      res.json({ success: true });
+      const downloadUrl = new URL(
+        `/attachments/${encodeURIComponent(req.file.filename)}`,
+        `${req.protocol}://${req.get("host")}`
+      );
+      downloadUrl.searchParams.set("fileName", newMessage.data.filename);
+
+      res.json({
+        success: true,
+        url: downloadUrl.toString(),
+        accessKey: req.file.filename,
+        messageId: savedMessage.id,
+      });
     } else {
       res.json({ success: false, message: "No file was uploaded." });
     }

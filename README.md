@@ -17,6 +17,26 @@ Simple web app for file / message transfer: Transfer files / messages between de
 
 Only the most recent 100 messages within a 3-day window are preserved.
 
+## Curl API
+
+Replace `SESSION_ID` and `http://localhost:6611` as needed.
+
+```sh
+# Send text
+curl -X POST -F "text=hello" -F "sessionId=SESSION_ID" \
+  http://localhost:6611/text
+
+# Upload a file. The JSON response includes `url`, an absolute download URL.
+curl -X POST -F "file=@./example.pdf" -F "sessionId=SESSION_ID" \
+  http://localhost:6611/file
+
+# Read session history
+curl http://localhost:6611/sessions/SESSION_ID/history
+
+# Delete the session history and its uploaded files
+curl -X DELETE http://localhost:6611/sessions/SESSION_ID/history
+```
+
 ## Large file uploads
 
 Browser uploads are split into independently authenticated AES-GCM envelopes. A
