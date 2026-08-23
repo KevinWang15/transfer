@@ -8,12 +8,10 @@
   overflow: hidden;
   padding: 16px;
   color: var(--text-primary);
-  background: rgba(18, 22, 34, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 17px;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48),
-    0 1px 0 rgba(255, 255, 255, 0.025) inset;
-  backdrop-filter: blur(20px);
+  background: #080808;
+  border: 1px solid var(--border-default);
+  border-radius: 2px;
+  box-shadow: 8px 8px 0 #000, 9px 9px 0 rgba(255, 255, 245, 0.08);
   animation: upload-progress-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -36,10 +34,10 @@
   width: 42px;
   height: 42px;
   place-items: center;
-  color: #aaa5ff;
-  background: rgba(111, 101, 243, 0.12);
-  border: 1px solid rgba(126, 116, 255, 0.14);
-  border-radius: 12px;
+  color: var(--accent);
+  background: rgba(215, 255, 69, 0.06);
+  border: 1px solid rgba(215, 255, 69, 0.2);
+  border-radius: 2px;
 
   &.has-failure {
     color: #ef8993;
@@ -95,7 +93,7 @@
   align-items: center;
 
   > strong {
-    color: #c5c1ff;
+    color: var(--accent);
     font-size: 13px;
     font-weight: 680;
     font-variant-numeric: tabular-nums;
@@ -110,7 +108,7 @@
     color: var(--text-faint);
     background: rgba(255, 255, 255, 0.025);
     border: 0;
-    border-radius: 8px;
+    border-radius: 2px;
 
     &:hover {
       color: var(--text-primary);
@@ -123,14 +121,13 @@
 .upload-current-track {
   overflow: hidden;
   background: rgba(255, 255, 255, 0.075);
-  border-radius: 999px;
+  border-radius: 0;
 
   > span {
     display: block;
     height: 100%;
-    background: linear-gradient(90deg, #776cf8, #5d8ce8 68%, #4acdb6);
-    border-radius: inherit;
-    box-shadow: 0 0 14px rgba(105, 97, 244, 0.38);
+    background: var(--accent);
+    border-radius: 0;
     transition: width 100ms linear;
   }
 }
@@ -154,7 +151,7 @@
   padding: 12px;
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 2px;
 }
 
 .upload-current-heading {
@@ -244,7 +241,7 @@
     color: var(--text-faint);
     background: transparent;
     border: 0;
-    border-radius: 8px;
+    border-radius: 2px;
 
     &:hover {
       color: var(--text-primary);
@@ -273,7 +270,7 @@
   color: var(--text-tertiary);
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: 9px;
+  border-radius: 2px;
 
   ion-icon {
     width: 14px;
@@ -325,7 +322,7 @@
     width: calc(100% - 20px);
     max-height: calc(100dvh - 92px);
     padding: 13px;
-    border-radius: 15px;
+    border-radius: 2px;
   }
 
   .upload-progress-header {

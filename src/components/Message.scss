@@ -34,7 +34,7 @@
 
 .message-state-label {
   &.sending {
-    color: #aaa5ff;
+    color: var(--accent);
 
     ion-icon {
       animation: delivery-pulse 1.2s ease-in-out infinite;
@@ -53,16 +53,16 @@
 .message-card {
   width: 100%;
   color: var(--text-primary);
-  background: rgba(19, 23, 35, 0.82);
+  background: #0c0c0c;
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  border-radius: 2px;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
   transition: opacity 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 .delivery-sending .message-card {
-  background: rgba(22, 25, 40, 0.72);
-  border-color: rgba(132, 122, 255, 0.16);
+  background: rgba(215, 255, 69, 0.025);
+  border-color: rgba(215, 255, 69, 0.28);
 }
 
 .delivery-sent .message-card {
@@ -96,7 +96,7 @@
         .delivery-failed
       ) {
       color: var(--accent-bright);
-      background: rgba(110, 100, 245, 0.1);
+      background: rgba(215, 255, 69, 0.09);
     }
   }
 }
@@ -111,7 +111,7 @@
   &:hover {
     .message-copy-action {
       color: var(--accent-bright);
-      background: rgba(110, 100, 245, 0.1);
+      background: rgba(215, 255, 69, 0.09);
     }
   }
 }
@@ -121,10 +121,10 @@
   width: 40px;
   height: 40px;
   place-items: center;
-  color: #9e98ff;
-  background: rgba(111, 101, 243, 0.1);
-  border: 1px solid rgba(126, 116, 255, 0.1);
-  border-radius: 11px;
+  color: var(--accent);
+  background: rgba(215, 255, 69, 0.06);
+  border: 1px solid rgba(215, 255, 69, 0.18);
+  border-radius: 2px;
 
   ion-icon {
     width: 19px;
@@ -138,7 +138,7 @@
   height: 30px;
   place-items: center;
   color: var(--text-faint);
-  border-radius: 9px;
+  border-radius: 2px;
   transition: color 150ms ease, background 150ms ease;
 
   ion-icon {
@@ -149,7 +149,7 @@
 
 .message-trailing-icon {
   &.delivery-sending {
-    color: #aaa5ff;
+    color: var(--accent);
 
     ion-icon {
       animation: delivery-pulse 1.2s ease-in-out infinite;
@@ -190,7 +190,7 @@
     color: var(--text-tertiary);
     background: rgba(255, 255, 255, 0.025);
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
+    border-radius: 2px;
     font-size: 10px;
     font-weight: 650;
 
@@ -279,7 +279,7 @@
   color: var(--text-faint);
   background: transparent;
   border: 0;
-  border-radius: 9px;
+  border-radius: 2px;
   transition: color 150ms ease, background 150ms ease;
 
   ion-icon {
@@ -289,7 +289,7 @@
 
   &:hover {
     color: var(--accent-bright);
-    background: rgba(110, 100, 245, 0.13);
+    background: rgba(215, 255, 69, 0.1);
   }
 }
 
@@ -301,8 +301,8 @@
   gap: 12px;
   align-items: center;
   justify-content: space-between;
-  color: #aaa5ff;
-  background: rgba(9, 12, 20, 0.18);
+  color: var(--accent);
+  background: #080808;
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.055);
   font-size: 10px;
@@ -327,8 +327,8 @@
   }
 
   &:hover {
-    color: #c5c1ff;
-    background: rgba(110, 100, 245, 0.055);
+    color: var(--accent-bright);
+    background: rgba(215, 255, 69, 0.045);
   }
 }
 
@@ -338,6 +338,7 @@
 
 .file-message-actions {
   display: grid;
+  min-height: 66px;
   grid-template-columns: minmax(0, 1fr) 48px;
   align-items: stretch;
 }
@@ -352,12 +353,7 @@
   padding: 0;
   place-items: center;
   color: var(--text-faint);
-  background: radial-gradient(
-      circle at 50% 20%,
-      rgba(119, 108, 255, 0.08),
-      transparent 46%
-    ),
-    rgba(7, 10, 17, 0.72);
+  background: #050505;
   border: 0;
   border-bottom: 1px solid var(--border-subtle);
   cursor: zoom-in;
@@ -372,7 +368,7 @@
     max-width: 100%;
     max-height: min(396px, calc(42dvh - 24px));
     object-fit: contain;
-    border-radius: 8px;
+    border-radius: 1px;
     opacity: 0;
     transition: opacity 220ms ease, filter 180ms ease;
   }
@@ -402,10 +398,10 @@
   height: 48px;
   margin: -24px 0 0 -24px;
   place-items: center;
-  color: #938cff;
-  background: rgba(111, 101, 243, 0.1);
-  border: 1px solid rgba(126, 116, 255, 0.13);
-  border-radius: 14px;
+  color: var(--accent);
+  background: rgba(215, 255, 69, 0.06);
+  border: 1px solid rgba(215, 255, 69, 0.2);
+  border-radius: 2px;
   animation: image-preview-pulse 1.4s ease-in-out infinite;
 
   ion-icon {
@@ -424,16 +420,15 @@
   gap: 6px;
   align-items: center;
   color: rgba(255, 255, 255, 0.9);
-  background: rgba(8, 11, 18, 0.78);
+  background: rgba(5, 5, 5, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 9px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  box-shadow: 3px 3px 0 #000;
   font-size: 9px;
   font-weight: 650;
   opacity: 0;
   transform: translateY(4px);
   transition: opacity 150ms ease, transform 150ms ease;
-  backdrop-filter: blur(10px);
 
   ion-icon {
     width: 13px;
@@ -456,6 +451,12 @@
 
 .file-primary-action {
   min-width: 0;
+  align-items: center;
+
+  .message-trailing-icon ion-icon {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 .file-message-copy {
@@ -494,6 +495,7 @@
   background: transparent;
   border: 0;
   border-left: 1px solid var(--border-subtle);
+  transition: color 150ms ease, background 150ms ease;
 
   ion-icon {
     width: 16px;
@@ -502,6 +504,7 @@
 
   &:hover {
     color: var(--accent-bright);
+    background: rgba(215, 255, 69, 0.08);
   }
 }
 

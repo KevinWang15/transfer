@@ -21,13 +21,11 @@
   gap: 11px;
   align-items: center;
   color: var(--text-primary);
-  background: rgba(20, 24, 36, 0.94);
+  background: #0a0a0a;
   border: 1px solid var(--border-default);
-  border-radius: 14px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38),
-    0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  border-radius: 2px;
+  box-shadow: 6px 6px 0 #000, 7px 7px 0 rgba(255, 255, 245, 0.08);
   animation: feedback-toast-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(18px);
   pointer-events: auto;
 
   &.is-leaving {
@@ -46,7 +44,7 @@
     color: var(--text-faint);
     background: transparent;
     border: 0;
-    border-radius: 8px;
+    border-radius: 2px;
     transform: translateY(-50%);
 
     ion-icon {
@@ -66,10 +64,10 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  color: #aaa5ff;
-  background: rgba(119, 108, 255, 0.1);
-  border: 1px solid rgba(132, 122, 255, 0.13);
-  border-radius: 10px;
+  color: var(--accent);
+  background: rgba(215, 255, 69, 0.06);
+  border: 1px solid rgba(215, 255, 69, 0.2);
+  border-radius: 2px;
 
   ion-icon {
     width: 17px;
@@ -106,7 +104,7 @@
   bottom: 0;
   left: 0;
   height: 2px;
-  background: #8e86ff;
+  background: var(--accent);
   transform-origin: left;
   animation-name: feedback-toast-timer;
   animation-timing-function: linear;
@@ -186,7 +184,7 @@
   color: var(--text-primary);
   background: transparent;
   border: 0;
-  border-radius: 22px;
+  border-radius: 2px;
   outline: 0;
 
   &.size-wide {
@@ -198,9 +196,8 @@
   }
 
   &::backdrop {
-    background: rgba(4, 6, 11, 0.74);
+    background: rgba(0, 0, 0, 0.82);
     animation: feedback-backdrop-enter 180ms ease;
-    backdrop-filter: blur(12px);
   }
 }
 
@@ -211,16 +208,10 @@
   overflow-y: auto;
   padding: 26px;
   color: var(--text-primary);
-  background: linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.018),
-      transparent 36%
-    ),
-    rgba(17, 20, 31, 0.985);
-  border: 1px solid rgba(255, 255, 255, 0.105);
-  border-radius: 22px;
-  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.58),
-    0 1px 0 rgba(255, 255, 255, 0.035) inset;
+  background: #090909;
+  border: 1px solid var(--border-default);
+  border-radius: 2px;
+  box-shadow: 10px 10px 0 #000, 11px 11px 0 rgba(255, 255, 245, 0.08);
   animation: feedback-dialog-enter 260ms cubic-bezier(0.16, 1, 0.3, 1);
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
   scrollbar-width: thin;
@@ -239,7 +230,7 @@
   color: var(--text-tertiary);
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 2px;
 
   ion-icon {
     width: 17px;
@@ -285,10 +276,10 @@
   width: 42px;
   height: 42px;
   place-items: center;
-  color: #aaa5ff;
-  background: rgba(115, 104, 248, 0.11);
-  border: 1px solid rgba(132, 122, 255, 0.15);
-  border-radius: 12px;
+  color: var(--accent);
+  background: rgba(215, 255, 69, 0.06);
+  border: 1px solid rgba(215, 255, 69, 0.2);
+  border-radius: 2px;
 
   ion-icon {
     width: 20px;
@@ -337,9 +328,9 @@
     height: 48px;
     padding: 0 13px;
     color: var(--text-primary);
-    background: rgba(10, 12, 20, 0.78);
+    background: #050505;
     border: 1px solid var(--border-default);
-    border-radius: 11px;
+    border-radius: 2px;
     outline: 0;
     font-size: 13px;
     transition: border-color 150ms ease, box-shadow 150ms ease;
@@ -349,8 +340,8 @@
     }
 
     &:focus {
-      border-color: rgba(135, 126, 255, 0.7);
-      box-shadow: 0 0 0 3px rgba(110, 100, 245, 0.11);
+      border-color: var(--accent);
+      box-shadow: 3px 3px 0 rgba(215, 255, 69, 0.16);
     }
 
     &[aria-invalid="true"] {
@@ -386,9 +377,9 @@
   overflow: hidden;
   margin-top: 20px;
   place-items: center;
-  background: #0b0e16;
+  background: #030303;
   border: 1px solid var(--border-subtle);
-  border-radius: 15px;
+  border-radius: 2px;
 
   img {
     display: block;
@@ -404,7 +395,7 @@
 
     img {
       width: min(320px, 100%);
-      border-radius: 5px;
+      border-radius: 0;
     }
   }
 }
@@ -424,7 +415,7 @@
   button {
     min-height: 42px;
     padding: 0 16px;
-    border-radius: 10px;
+    border-radius: 2px;
     font-size: 11px;
     font-weight: 680;
 
@@ -440,10 +431,10 @@
     }
 
     &.primary {
-      color: white;
-      background: linear-gradient(135deg, #756afb, #5159e6);
-      border: 1px solid transparent;
-      box-shadow: 0 9px 24px rgba(75, 73, 213, 0.2);
+      color: #050505;
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      box-shadow: 3px 3px 0 #3b431b;
 
       &:hover {
         filter: brightness(1.08);
@@ -453,8 +444,10 @@
 }
 
 .feedback-dialog.tone-danger .feedback-dialog-actions .primary {
-  background: linear-gradient(135deg, #df6874, #bd4e5b);
-  box-shadow: 0 9px 24px rgba(190, 75, 87, 0.2);
+  color: white;
+  background: #c94f5c;
+  border-color: #df6874;
+  box-shadow: 3px 3px 0 #542229;
 }
 
 @keyframes feedback-backdrop-enter {
@@ -486,7 +479,7 @@
   .feedback-dialog-surface {
     max-height: calc(100dvh - 20px);
     padding: 22px 18px 18px;
-    border-radius: 20px;
+    border-radius: 2px;
   }
 
   .feedback-dialog-heading {
@@ -502,7 +495,7 @@
   .feedback-dialog-icon {
     width: 38px;
     height: 38px;
-    border-radius: 11px;
+    border-radius: 2px;
   }
 
   .feedback-dialog-actions {
