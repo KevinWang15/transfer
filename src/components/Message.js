@@ -1,4 +1,10 @@
-import React, { useId, useLayoutEffect, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { IonIcon } from "@ionic/react";
 import {
   alertCircleOutline,
@@ -10,6 +16,8 @@ import {
   documentOutline,
   documentTextOutline,
   downloadOutline,
+  expandOutline,
+  imageOutline,
   linkOutline,
   refreshOutline,
   timeOutline,
@@ -19,6 +27,13 @@ import { copyText } from "../utils/clipboard.js";
 import { API_BASE } from "../apiclient/apiClient.js";
 import "./Message.scss";
 import { formatDate } from "../utils/date.js";
+import { formatBytes } from "../utils/uploadProgress.js";
+import {
+  fileExtension,
+  isInlineImageSize,
+  isPreviewableImage,
+  normalizedFileSize,
+} from "../utils/filePreview.js";
 
 export default function Message({ message, onRetry, onEdit }) {
   switch (message.data.type) {
@@ -196,13 +211,60 @@ function TextMessage({ message, onRetry, onEdit }) {
 }
 
 function FileMessage({ message }) {
-  const filename = message.data.filename;
+  const filename = String(message.data.filename || "attachment");
   const url = `${API_BASE}attachments/${
     message.data.access_key
   }?fileName=${encodeURIComponent(filename)}`;
-  const extension = filename.includes(".")
-    ? filename.split(".").pop().toUpperCase()
-    : null;
+  const extension = fileExtension(filename).toUpperCase();
+  const imageFile = isPreviewableImage(filename);
+  const storedSize = normalizedFileSize(message.data.size);
+  const [resolvedSize, setResolvedSize] = useState(storedSize);
+  const [previewStatus, setPreviewStatus] = useState(() => {
+    if (!imageFile) {
+      return "unavailable";
+    }
+    if (storedSize === null) {
+      return "checking";
+    }
+    return isInlineImageSize(storedSize) ? "loading" : "unavailable";
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setResolvedSize(storedSize);
+
+    if (!imageFile) {
+      setPreviewStatus("unavailable");
+      return () => controller.abort();
+    }
+    if (storedSize !== null) {
+      setPreviewStatus(
+        isInlineImageSize(storedSize) ? "loading" : "unavailable"
+      );
+      return () => controller.abort();
+    }
+
+    setPreviewStatus("checking");
+    window
+      .fetch(url, { method: "HEAD", signal: controller.signal })
+      .then((response) => {
+        const responseSize = normalizedFileSize(
+          response.headers.get("content-length")
+        );
+        if (!response.ok || !isInlineImageSize(responseSize)) {
+          setPreviewStatus("unavailable");
+          return;
+        }
+        setResolvedSize(responseSize);
+        setPreviewStatus("loading");
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          setPreviewStatus("unavailable");
+        }
+      });
+    return () => controller.abort();
+  }, [imageFile, storedSize, url]);
 
   const openFile = () => {
     window.open(url, "_blank", "noopener,noreferrer");
@@ -217,36 +279,81 @@ function FileMessage({ message }) {
     }
   };
 
+  const showImagePreview = imageFile && previewStatus !== "unavailable";
+  const fileTypeLabel = extension ? `${extension} file` : "File attachment";
+  const fileDetails =
+    resolvedSize === null
+      ? fileTypeLabel
+      : `${fileTypeLabel} · ${formatBytes(resolvedSize)}`;
+
   return (
     <article className="message message-file">
       <MessageMeta label="File attachment" createdAt={message.created_at} />
-      <div className="message-card file-message-card">
-        <button
-          type="button"
-          className="message-primary-action file-primary-action"
-          onClick={openFile}
-          title={filename}
-        >
-          <span className="message-type-icon" aria-hidden="true">
-            <IonIcon icon={documentOutline} />
-          </span>
-          <span className="file-message-copy">
-            <strong>{filename}</strong>
-            <span>{extension ? `${extension} file` : "File attachment"}</span>
-          </span>
-          <span className="message-trailing-icon" aria-hidden="true">
-            <IonIcon icon={downloadOutline} />
-          </span>
-        </button>
-        <button
-          type="button"
-          className="file-copy-action"
-          onClick={copyLink}
-          aria-label={`Copy link to ${filename}`}
-          title="Copy file link"
-        >
-          <IonIcon icon={linkOutline} />
-        </button>
+      <div
+        className={`message-card file-message-card ${
+          showImagePreview ? "has-image-preview" : ""
+        }`}
+      >
+        {showImagePreview && (
+          <button
+            type="button"
+            className={`image-file-preview is-${previewStatus}`}
+            onClick={openFile}
+            aria-label={`Open image ${filename}`}
+            aria-busy={previewStatus !== "loaded"}
+          >
+            {previewStatus !== "loaded" && (
+              <span className="image-preview-placeholder" aria-hidden="true">
+                <IonIcon icon={imageOutline} />
+              </span>
+            )}
+            {previewStatus !== "checking" && (
+              <img
+                src={url}
+                alt={`Preview of ${filename}`}
+                loading="lazy"
+                decoding="async"
+                draggable="false"
+                onLoad={() => setPreviewStatus("loaded")}
+                onError={() => setPreviewStatus("unavailable")}
+              />
+            )}
+            {previewStatus === "loaded" && (
+              <span className="image-preview-open" aria-hidden="true">
+                <IonIcon icon={expandOutline} />
+                Open image
+              </span>
+            )}
+          </button>
+        )}
+        <div className="file-message-actions">
+          <button
+            type="button"
+            className="message-primary-action file-primary-action"
+            onClick={openFile}
+            title={filename}
+          >
+            <span className="message-type-icon" aria-hidden="true">
+              <IonIcon icon={imageFile ? imageOutline : documentOutline} />
+            </span>
+            <span className="file-message-copy">
+              <strong>{filename}</strong>
+              <span>{fileDetails}</span>
+            </span>
+            <span className="message-trailing-icon" aria-hidden="true">
+              <IonIcon icon={downloadOutline} />
+            </span>
+          </button>
+          <button
+            type="button"
+            className="file-copy-action"
+            onClick={copyLink}
+            aria-label={`Copy link to ${filename}`}
+            title="Copy file link"
+          >
+            <IonIcon icon={linkOutline} />
+          </button>
+        </div>
       </div>
     </article>
   );

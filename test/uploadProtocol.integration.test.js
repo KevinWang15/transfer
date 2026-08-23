@@ -376,6 +376,13 @@ test("large encrypted upload is parallel, resumable, bounded, and idempotent", a
   assert.equal(finalized.body.byteLength, opaqueRequestBytes);
   assert.equal(finalized.result.accessKey, uploadId);
 
+  const headResponse = await fetch(
+    `${server.baseUrl}attachments/${finalized.result.accessKey}?fileName=test.bin`,
+    { method: "HEAD" }
+  );
+  assert.equal(headResponse.status, 200);
+  assert.equal(Number(headResponse.headers.get("content-length")), file.length);
+
   const downloadedResponse = await fetch(
     `${server.baseUrl}attachments/${finalized.result.accessKey}?fileName=test.bin`
   );
@@ -401,7 +408,9 @@ test("large encrypted upload is parallel, resumable, bounded, and idempotent", a
   );
   const history = await historyResponse.json();
   assert.equal(history.length, 1);
-  assert.equal(JSON.parse(history[0].data).upload_id, uploadId);
+  const historyData = JSON.parse(history[0].data);
+  assert.equal(historyData.upload_id, uploadId);
+  assert.equal(historyData.size, file.length);
 
   const temporaryEntries = await fs.readdir(
     path.join(server.workingDirectory, "data/upload-chunks", uploadId)

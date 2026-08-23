@@ -699,6 +699,7 @@ async function performFinalization(uploadId, payload, { io }) {
           filename: manifest.filename,
           access_key: accessKey,
           upload_id: uploadId,
+          size: manifest.size,
         },
         created_at: manifest.timestamp,
       });

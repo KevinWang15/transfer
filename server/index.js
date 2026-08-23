@@ -68,6 +68,7 @@ app.post(
           type: "file",
           filename: req.body.name || req.file.originalname,
           access_key: req.file.filename,
+          size: req.file.size,
         },
         created_at: +new Date(),
       });
