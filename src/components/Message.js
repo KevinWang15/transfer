@@ -29,6 +29,7 @@ import "./Message.scss";
 import { formatDate } from "../utils/date.js";
 import { formatBytes } from "../utils/uploadProgress.js";
 import {
+  attachmentUrls,
   fileExtension,
   isInlineImageSize,
   isPreviewableImage,
@@ -212,11 +213,13 @@ function TextMessage({ message, onRetry, onEdit }) {
 
 function FileMessage({ message }) {
   const filename = String(message.data.filename || "attachment");
-  const url = `${API_BASE}attachments/${
-    message.data.access_key
-  }?fileName=${encodeURIComponent(filename)}`;
   const extension = fileExtension(filename).toUpperCase();
   const imageFile = isPreviewableImage(filename);
+  const { view: viewUrl, download: downloadUrl } = attachmentUrls(
+    API_BASE,
+    message.data.access_key,
+    filename
+  );
   const storedSize = normalizedFileSize(message.data.size);
   const [resolvedSize, setResolvedSize] = useState(storedSize);
   const [previewStatus, setPreviewStatus] = useState(() => {
@@ -246,7 +249,7 @@ function FileMessage({ message }) {
 
     setPreviewStatus("checking");
     window
-      .fetch(url, { method: "HEAD", signal: controller.signal })
+      .fetch(viewUrl, { method: "HEAD", signal: controller.signal })
       .then((response) => {
         const responseSize = normalizedFileSize(
           response.headers.get("content-length")
@@ -264,15 +267,25 @@ function FileMessage({ message }) {
         }
       });
     return () => controller.abort();
-  }, [imageFile, storedSize, url]);
+  }, [imageFile, storedSize, viewUrl]);
 
-  const openFile = () => {
-    window.open(url, "_blank", "noopener,noreferrer");
+  const openImage = () => {
+    window.open(viewUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const downloadFile = () => {
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const copyLink = async () => {
     try {
-      await copyText(url);
+      await copyText(viewUrl);
       toast("File link copied.", { tone: "success" });
     } catch (error) {
       toast("Could not copy the file link.", { tone: "error" });
@@ -298,7 +311,7 @@ function FileMessage({ message }) {
           <button
             type="button"
             className={`image-file-preview is-${previewStatus}`}
-            onClick={openFile}
+            onClick={openImage}
             aria-label={`Open image ${filename}`}
             aria-busy={previewStatus !== "loaded"}
           >
@@ -309,7 +322,7 @@ function FileMessage({ message }) {
             )}
             {previewStatus !== "checking" && (
               <img
-                src={url}
+                src={viewUrl}
                 alt={`Preview of ${filename}`}
                 loading="lazy"
                 decoding="async"
@@ -330,8 +343,9 @@ function FileMessage({ message }) {
           <button
             type="button"
             className="message-primary-action file-primary-action"
-            onClick={openFile}
-            title={filename}
+            onClick={downloadFile}
+            aria-label={`Download ${filename}`}
+            title={`Download ${filename}`}
           >
             <span className="message-type-icon" aria-hidden="true">
               <IonIcon icon={imageFile ? imageOutline : documentOutline} />

@@ -23,6 +23,7 @@ import { encryptUploadResponse } from "./utils/encryption.js";
 import createUploadRouter from "./routes/uploadRoutes.js";
 import { startPeriodicUploadCleanup } from "./services/UploadService.js";
 import { createTransferMcpHandler } from "./services/McpService.js";
+import { previewableImageMimeType } from "../src/utils/filePreview.js";
 
 const app = express();
 
@@ -136,9 +137,21 @@ app.post("/text", multer({}).any(), async (req, res) => {
 });
 
 app.get("/attachments/:access_key", (req, res) => {
-  const fileName = req.query.fileName;
+  const fileName =
+    typeof req.query.fileName === "string" ? req.query.fileName : "attachment";
   const file = path.join("data/file-uploads", req.params.access_key);
-  res.download(file, fileName);
+  const imageContentType = previewableImageMimeType(fileName);
+
+  if (!imageContentType || req.query.download === "1") {
+    return res.download(file, fileName);
+  }
+
+  res.set({
+    "Content-Type": imageContentType,
+    "Content-Disposition": "inline",
+    "X-Content-Type-Options": "nosniff",
+  });
+  return res.sendFile(path.resolve(file));
 });
 
 const frontendRoot = fileURLToPath(

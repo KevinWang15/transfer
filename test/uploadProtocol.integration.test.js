@@ -386,6 +386,7 @@ test("large encrypted upload is parallel, resumable, bounded, and idempotent", a
   );
   assert.equal(headResponse.status, 200);
   assert.equal(Number(headResponse.headers.get("content-length")), file.length);
+  assert.match(headResponse.headers.get("content-disposition"), /^attachment;/);
 
   const downloadedResponse = await fetch(
     `${server.baseUrl}attachments/${finalized.result.accessKey}?fileName=test.bin`
@@ -396,6 +397,38 @@ test("large encrypted upload is parallel, resumable, bounded, and idempotent", a
   assert.equal(
     crypto.createHash("sha256").update(downloaded).digest("hex"),
     crypto.createHash("sha256").update(file).digest("hex")
+  );
+
+  const inlineImageResponse = await fetch(
+    `${server.baseUrl}attachments/${
+      finalized.result.accessKey
+    }?fileName=${encodeURIComponent("preview image.PNG")}`
+  );
+  assert.equal(inlineImageResponse.status, 200);
+  assert.equal(inlineImageResponse.headers.get("content-type"), "image/png");
+  assert.equal(
+    inlineImageResponse.headers.get("content-disposition"),
+    "inline"
+  );
+  assert.equal(
+    inlineImageResponse.headers.get("x-content-type-options"),
+    "nosniff"
+  );
+  assert.equal(
+    Buffer.from(await inlineImageResponse.arrayBuffer()).length,
+    file.length
+  );
+
+  const explicitImageDownload = await fetch(
+    `${server.baseUrl}attachments/${
+      finalized.result.accessKey
+    }?fileName=${encodeURIComponent("preview image.PNG")}&download=1`,
+    { method: "HEAD" }
+  );
+  assert.equal(explicitImageDownload.status, 200);
+  assert.match(
+    explicitImageDownload.headers.get("content-disposition"),
+    /^attachment; filename="preview image\.PNG"/
   );
 
   const finalizedAgain = await opaquePost(

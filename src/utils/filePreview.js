@@ -1,18 +1,18 @@
 export const MAX_INLINE_IMAGE_BYTES = 12 * 1024 * 1024;
 
-const previewableImageExtensions = new Set([
-  "apng",
-  "avif",
-  "bmp",
-  "gif",
-  "ico",
-  "jfif",
-  "jpeg",
-  "jpg",
-  "pjp",
-  "pjpeg",
-  "png",
-  "webp",
+const previewableImageMimeTypes = new Map([
+  ["apng", "image/apng"],
+  ["avif", "image/avif"],
+  ["bmp", "image/bmp"],
+  ["gif", "image/gif"],
+  ["ico", "image/x-icon"],
+  ["jfif", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["jpg", "image/jpeg"],
+  ["pjp", "image/jpeg"],
+  ["pjpeg", "image/jpeg"],
+  ["png", "image/png"],
+  ["webp", "image/webp"],
 ]);
 
 export function fileExtension(filename) {
@@ -24,7 +24,21 @@ export function fileExtension(filename) {
 }
 
 export function isPreviewableImage(filename) {
-  return previewableImageExtensions.has(fileExtension(filename));
+  return previewableImageMimeType(filename) !== null;
+}
+
+export function previewableImageMimeType(filename) {
+  return previewableImageMimeTypes.get(fileExtension(filename)) || null;
+}
+
+export function attachmentUrls(apiBase, accessKey, filename) {
+  const view = `${apiBase}attachments/${encodeURIComponent(
+    String(accessKey)
+  )}?fileName=${encodeURIComponent(String(filename))}`;
+  return {
+    view,
+    download: isPreviewableImage(filename) ? `${view}&download=1` : view,
+  };
 }
 
 export function normalizedFileSize(size) {
