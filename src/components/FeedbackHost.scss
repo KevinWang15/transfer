@@ -504,6 +504,10 @@
       flex: 1;
     }
   }
+
+  .feedback-dialog-field input {
+    font-size: 16px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
