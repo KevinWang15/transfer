@@ -752,14 +752,11 @@ class Session extends React.Component {
                 <div className="empty-state-icon">
                   <IonIcon icon={cloudUploadOutline} />
                 </div>
-                <span className="empty-state-eyebrow">
-                  YOUR SESSION IS READY
-                </span>
-                <h2>Send something worth sharing.</h2>
+                <span className="empty-state-eyebrow">EMPTY SESSION</span>
+                <h2>No files or messages</h2>
                 <p>
-                  Drop files anywhere, paste an image, or write a note below.
-                  Everything shared here appears instantly for anyone with the
-                  link.
+                  Upload a file, paste an image, or enter a message. Items are
+                  available to anyone with the session link.
                 </p>
                 <div className="empty-state-actions">
                   <button type="button" onClick={this.sendFile}>
@@ -768,7 +765,7 @@ class Session extends React.Component {
                   </button>
                   <button type="button" onClick={this.copySessionLink}>
                     <IonIcon icon={linkOutline} />
-                    Invite someone
+                    Copy session link
                   </button>
                 </div>
               </div>
@@ -1071,9 +1068,9 @@ class Session extends React.Component {
     if (qrCodeDataURL) {
       await showDialog({
         icon: qrCodeOutline,
-        eyebrow: "Join from another device",
+        eyebrow: "Session QR code",
         title: "Open this session",
-        description: "Scan the code to open this exact session instantly.",
+        description: "Scan to open this session on another device.",
         image: {
           src: qrCodeDataURL,
           alt: "QR code for this session",

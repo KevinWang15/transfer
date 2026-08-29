@@ -130,7 +130,7 @@ function TextMessage({ message, onRetry, onEdit }) {
       }`}
     >
       <MessageMeta
-        label="Shared note"
+        label="Text message"
         createdAt={message.created_at}
         deliveryStatus={deliveryStatus}
       />
@@ -157,9 +157,7 @@ function TextMessage({ message, onRetry, onEdit }) {
             type="button"
             className="message-copy-action"
             onClick={copyMessage}
-            aria-label={
-              isCollapsible ? "Copy full shared note" : "Copy shared note"
-            }
+            aria-label={isCollapsible ? "Copy full message" : "Copy message"}
             title="Copy message"
           >
             <IonIcon icon={copyOutline} />

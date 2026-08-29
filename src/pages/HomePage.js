@@ -19,7 +19,7 @@ import {
 class HomePage extends React.Component {
   createSession = (sessionId) => {
     this.props.router.navigate(`/sessions/${sessionId}`);
-    toast("Session ready — share the link to invite someone.", {
+    toast("Session created.", {
       duration: 5000,
       tone: "success",
     });
@@ -59,15 +59,12 @@ class HomePage extends React.Component {
           <section className="home-hero">
             <div className="home-eyebrow">
               <span className="home-eyebrow-dot" />
-              Fast, private, and built for big files
+              File and message transfer
             </div>
-            <h1>
-              Move files.
-              <span>Stay in flow.</span>
-            </h1>
+            <h1>Transfer files and messages.</h1>
             <p className="home-lede">
-              Open a focused transfer space in one click. Share the link, then
-              send large files, images, and notes from any device.
+              Create a session to transfer files, images, or text between
+              devices.
             </p>
 
             <div className="home-actions">
@@ -91,7 +88,7 @@ class HomePage extends React.Component {
 
             <div className="home-action-note">
               <IonIcon icon={checkmarkCircleOutline} />
-              No account required. Anyone with the link can join.
+              No account required. Anyone with the session link can access it.
             </div>
           </section>
 
@@ -139,7 +136,7 @@ class HomePage extends React.Component {
               <div className="demo-note">
                 <div className="demo-note-avatar">M</div>
                 <div>
-                  <span>Shared note</span>
+                  <span>Text message</span>
                   <p>The latest build is ready for review.</p>
                 </div>
               </div>
@@ -152,8 +149,8 @@ class HomePage extends React.Component {
                 <span>+2</span>
               </div>
               <div>
-                <strong>One link, every device</strong>
-                <span>Keep everyone in the same flow</span>
+                <strong>Session link</strong>
+                <span>Open this session on another device</span>
               </div>
             </div>
           </aside>
@@ -177,7 +174,8 @@ class HomePage extends React.Component {
           <div>
             <IonIcon icon={peopleOutline} />
             <span>
-              <strong>Effortless sharing</strong>A link is all your team needs
+              <strong>Link access</strong>Anyone with the link can access the
+              session
             </span>
           </div>
         </footer>
@@ -189,7 +187,7 @@ class HomePage extends React.Component {
 function promptForSessionName() {
   return showDialog({
     icon: keyOutline,
-    eyebrow: "Private session",
+    eyebrow: "Named session",
     title: "Name your session",
     description:
       "Use at least 10 characters and make it hard to guess. Anyone who knows the name can open the session.",

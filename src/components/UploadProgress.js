@@ -55,7 +55,7 @@ function CurrentUpload({ upload, position, totalFiles }) {
               : isPreparing
               ? "Encrypting and preparing"
               : isFinalizing
-              ? "Finishing securely"
+              ? "Finalizing upload"
               : `File ${position} of ${totalFiles}`}
           </span>
           <strong title={upload.filename}>{upload.filename}</strong>
@@ -171,10 +171,10 @@ export default function UploadProgress({
   const overallPercent = Math.min(100, Math.max(0, summary.progress * 100));
   const headline = isBusy
     ? summary.totalFiles === 1
-      ? "Secure upload in progress"
+      ? "Upload in progress"
       : `${summary.totalFiles} files in this upload`
     : summary.failedCount
-    ? "Some files need attention"
+    ? "Some uploads failed"
     : "Uploads complete";
   const statusText = isBusy
     ? `${summary.completedCount} complete · ${summary.queuedCount} waiting${
