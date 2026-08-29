@@ -49,11 +49,13 @@
   },
   "browserslist": {
     "production": [
+      "firefox >= 66",
       ">0.2%",
       "not dead",
       "not op_mini all"
     ],
     "development": [
+      "firefox >= 66",
       "last 1 chrome version",
       "last 1 firefox version",
       "last 1 safari version"

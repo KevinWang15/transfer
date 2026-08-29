@@ -8,6 +8,7 @@ import {
   notificationsOutline,
 } from "ionicons/icons/index.js";
 import { subscribeToFeedback } from "../utils/feedback.js";
+import { hasNativeDialogSupport } from "../utils/browserCompatibility.js";
 import "./FeedbackHost.scss";
 
 const toneIcons = {
@@ -164,6 +165,7 @@ function FeedbackDialog({ dialog, onResolve, toastRegion }) {
   const titleId = `feedback-dialog-title-${dialog.id}`;
   const descriptionId = `feedback-dialog-description-${dialog.id}`;
   const errorId = `feedback-dialog-error-${dialog.id}`;
+  const supportsNativeDialog = hasNativeDialogSupport();
 
   const dismiss = useCallback(() => {
     if (options.dismissible === false) {
@@ -184,8 +186,11 @@ function FeedbackDialog({ dialog, onResolve, toastRegion }) {
 
   useEffect(() => {
     const element = dialogRef.current;
-    if (!element.open) {
+    const previousBodyOverflow = document.body.style.overflow;
+    if (supportsNativeDialog && !element.open) {
       element.showModal();
+    } else if (!supportsNativeDialog) {
+      document.body.style.overflow = "hidden";
     }
     window.requestAnimationFrame(() => {
       const preferredAction =
@@ -199,138 +204,202 @@ function FeedbackDialog({ dialog, onResolve, toastRegion }) {
     });
     const restoreFocus = restoreFocusRef.current;
     return () => {
-      if (element.open) {
+      if (
+        supportsNativeDialog &&
+        element.open &&
+        typeof element.close === "function"
+      ) {
         element.close();
+      }
+      if (!supportsNativeDialog) {
+        document.body.style.overflow = previousBodyOverflow;
       }
       restoreFocus?.focus?.();
     };
-  }, [options.tone]);
+  }, [options.tone, supportsNativeDialog]);
+
+  const handleFallbackKeyDown = (event) => {
+    if (supportsNativeDialog) {
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      dismiss();
+      return;
+    }
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const element = dialogRef.current;
+    const focusable = Array.from(
+      element.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((candidate) => !candidate.hidden);
+    if (!focusable.length) {
+      event.preventDefault();
+      element.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   const tone = options.tone || "neutral";
   const icon = options.icon || toneIcons[tone] || toneIcons.neutral;
   const hasFooter = !options.hideConfirm || options.showCancel;
+  const DialogElement = supportsNativeDialog ? "dialog" : "div";
+  const dialogCompatibilityProps = supportsNativeDialog
+    ? {
+        onCancel: (event) => {
+          event.preventDefault();
+          dismiss();
+        },
+      }
+    : { role: "dialog", "aria-modal": "true" };
 
   return (
-    <dialog
-      ref={dialogRef}
-      className={`feedback-dialog tone-${tone} size-${
-        options.size || "default"
-      }`}
-      aria-labelledby={titleId}
-      aria-describedby={options.description ? descriptionId : undefined}
-      onCancel={(event) => {
-        event.preventDefault();
-        dismiss();
-      }}
+    <div
+      className="feedback-dialog-layer"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           dismiss();
         }
       }}
     >
-      {toastRegion}
-      <form
-        method="dialog"
-        className="feedback-dialog-surface"
-        onSubmit={(event) => {
-          event.preventDefault();
-          confirm();
+      <DialogElement
+        ref={dialogRef}
+        className={`feedback-dialog tone-${tone} size-${
+          options.size || "default"
+        }`}
+        tabIndex="-1"
+        aria-labelledby={titleId}
+        aria-describedby={options.description ? descriptionId : undefined}
+        {...dialogCompatibilityProps}
+        onKeyDown={handleFallbackKeyDown}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            dismiss();
+          }
         }}
       >
-        {options.showClose !== false && (
-          <button
-            ref={closeRef}
-            type="button"
-            className="feedback-dialog-close"
-            onClick={dismiss}
-            aria-label="Close dialog"
-          >
-            <IonIcon icon={closeOutline} />
-          </button>
-        )}
-
-        <div className="feedback-dialog-heading">
-          {icon && (
-            <span className="feedback-dialog-icon" aria-hidden="true">
-              <IonIcon icon={icon} />
-            </span>
+        {toastRegion}
+        <form
+          method="dialog"
+          className="feedback-dialog-surface"
+          onSubmit={(event) => {
+            event.preventDefault();
+            confirm();
+          }}
+        >
+          {options.showClose !== false && (
+            <button
+              ref={closeRef}
+              type="button"
+              className="feedback-dialog-close"
+              onClick={dismiss}
+              aria-label="Close dialog"
+            >
+              <IonIcon icon={closeOutline} />
+            </button>
           )}
-          <div>
-            {options.eyebrow && <span>{options.eyebrow}</span>}
-            <h2 id={titleId}>{options.title}</h2>
-          </div>
-        </div>
 
-        {options.description && (
-          <p id={descriptionId} className="feedback-dialog-description">
-            {options.description}
-          </p>
-        )}
-
-        {options.image && (
-          <div
-            className={`feedback-dialog-image ${
-              options.image.variant || "preview"
-            }`}
-          >
-            <img src={options.image.src} alt={options.image.alt || ""} />
-          </div>
-        )}
-
-        {options.input && (
-          <label className="feedback-dialog-field">
-            <span>{options.input.label}</span>
-            <input
-              ref={inputRef}
-              type={options.input.type || "text"}
-              value={inputValue}
-              placeholder={options.input.placeholder}
-              autoComplete={options.input.autoComplete || "off"}
-              autoCapitalize={options.input.autoCapitalize || "off"}
-              spellCheck={options.input.spellCheck ?? false}
-              maxLength={options.input.maxLength}
-              aria-invalid={Boolean(validationError)}
-              aria-describedby={validationError ? errorId : undefined}
-              onChange={(event) => {
-                setInputValue(event.target.value);
-                if (validationError) {
-                  setValidationError("");
-                }
-              }}
-            />
-            {validationError && (
-              <span id={errorId} className="feedback-dialog-error" role="alert">
-                <IonIcon icon={alertCircleOutline} />
-                {validationError}
+          <div className="feedback-dialog-heading">
+            {icon && (
+              <span className="feedback-dialog-icon" aria-hidden="true">
+                <IonIcon icon={icon} />
               </span>
             )}
-          </label>
-        )}
-
-        {options.content && (
-          <div className="feedback-dialog-content">{options.content}</div>
-        )}
-
-        {hasFooter && (
-          <div className="feedback-dialog-actions">
-            {options.showCancel && (
-              <button
-                ref={cancelRef}
-                type="button"
-                className="secondary"
-                onClick={dismiss}
-              >
-                {options.cancelLabel || "Cancel"}
-              </button>
-            )}
-            {!options.hideConfirm && (
-              <button ref={confirmRef} type="submit" className="primary">
-                {options.confirmLabel || "Continue"}
-              </button>
-            )}
+            <div>
+              {options.eyebrow && <span>{options.eyebrow}</span>}
+              <h2 id={titleId}>{options.title}</h2>
+            </div>
           </div>
-        )}
-      </form>
-    </dialog>
+
+          {options.description && (
+            <p id={descriptionId} className="feedback-dialog-description">
+              {options.description}
+            </p>
+          )}
+
+          {options.image && (
+            <div
+              className={`feedback-dialog-image ${
+                options.image.variant || "preview"
+              }`}
+            >
+              <img src={options.image.src} alt={options.image.alt || ""} />
+            </div>
+          )}
+
+          {options.input && (
+            <label className="feedback-dialog-field">
+              <span>{options.input.label}</span>
+              <input
+                ref={inputRef}
+                type={options.input.type || "text"}
+                value={inputValue}
+                placeholder={options.input.placeholder}
+                autoComplete={options.input.autoComplete || "off"}
+                autoCapitalize={options.input.autoCapitalize || "off"}
+                spellCheck={options.input.spellCheck ?? false}
+                maxLength={options.input.maxLength}
+                aria-invalid={Boolean(validationError)}
+                aria-describedby={validationError ? errorId : undefined}
+                onChange={(event) => {
+                  setInputValue(event.target.value);
+                  if (validationError) {
+                    setValidationError("");
+                  }
+                }}
+              />
+              {validationError && (
+                <span
+                  id={errorId}
+                  className="feedback-dialog-error"
+                  role="alert"
+                >
+                  <IonIcon icon={alertCircleOutline} />
+                  {validationError}
+                </span>
+              )}
+            </label>
+          )}
+
+          {options.content && (
+            <div className="feedback-dialog-content">{options.content}</div>
+          )}
+
+          {hasFooter && (
+            <div className="feedback-dialog-actions">
+              {options.showCancel && (
+                <button
+                  ref={cancelRef}
+                  type="button"
+                  className="secondary"
+                  onClick={dismiss}
+                >
+                  {options.cancelLabel || "Cancel"}
+                </button>
+              )}
+              {!options.hideConfirm && (
+                <button ref={confirmRef} type="submit" className="primary">
+                  {options.confirmLabel || "Continue"}
+                </button>
+              )}
+            </div>
+          )}
+        </form>
+      </DialogElement>
+    </div>
   );
 }

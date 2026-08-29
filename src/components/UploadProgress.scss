@@ -2,8 +2,12 @@
   position: fixed;
   z-index: 80;
   top: 98px;
+  right: 20px;
   right: max(20px, calc((100vw - 1180px) / 2));
+  width: calc(100% - 40px);
+  max-width: 510px;
   width: min(510px, calc(100% - 40px));
+  max-height: calc(100vh - 124px);
   max-height: calc(100dvh - 124px);
   overflow: hidden;
   padding: 16px;
@@ -209,6 +213,7 @@
 }
 
 .upload-queue-list {
+  max-height: 238px;
   max-height: max(100px, min(238px, calc(100dvh - 370px)));
   overflow-x: hidden;
   overflow-y: auto;
@@ -320,6 +325,7 @@
     top: 76px;
     right: 10px;
     width: calc(100% - 20px);
+    max-height: calc(100vh - 92px);
     max-height: calc(100dvh - 92px);
     padding: 13px;
     border-radius: 2px;
@@ -352,6 +358,7 @@
   }
 
   .upload-queue-list {
+    max-height: 210px;
     max-height: max(100px, min(210px, calc(100dvh - 345px)));
   }
 }

@@ -1,7 +1,9 @@
 .homepage {
   position: relative;
+  min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
+  padding: 0 5vw;
   padding: 0 clamp(24px, 5vw, 80px);
   background: linear-gradient(rgba(255, 255, 245, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 245, 0.025) 1px, transparent 1px),
@@ -33,6 +35,8 @@
   position: relative;
   z-index: 1;
   display: flex;
+  width: 100%;
+  max-width: 1240px;
   width: min(1240px, 100%);
   height: 92px;
   margin: 0 auto;
@@ -95,11 +99,16 @@
   position: relative;
   z-index: 1;
   display: grid;
+  width: 100%;
+  max-width: 1240px;
   width: min(1240px, 100%);
+  min-height: calc(100vh - 248px);
   min-height: calc(100dvh - 248px);
   margin: 0 auto;
+  padding: 8vh 0 72px;
   padding: clamp(54px, 8vh, 104px) 0 72px;
   grid-template-columns: minmax(0, 0.92fr) minmax(480px, 0.88fr);
+  gap: 9vw;
   gap: clamp(64px, 9vw, 128px);
   align-items: center;
 
@@ -135,6 +144,7 @@
 .home-hero h1 {
   margin: 0;
   color: var(--text-primary);
+  font-size: 64px;
   font-size: clamp(54px, 6.6vw, 88px);
   font-weight: 690;
   letter-spacing: -0.065em;
@@ -150,6 +160,7 @@
   max-width: 570px;
   margin: 28px 0 0;
   color: var(--text-secondary);
+  font-size: 18px;
   font-size: clamp(17px, 1.5vw, 20px);
   line-height: 1.65;
 }
@@ -487,6 +498,8 @@
   position: relative;
   z-index: 1;
   display: grid;
+  width: 100%;
+  max-width: 1240px;
   width: min(1240px, 100%);
   min-height: 126px;
   margin: 0 auto;
@@ -530,6 +543,7 @@
   }
 
   .transfer-demo {
+    width: 100%;
     width: min(620px, 100%);
     max-width: 100%;
     min-width: 0;
@@ -556,6 +570,7 @@
   }
 
   .home-hero h1 {
+    font-size: 13.5vw;
     font-size: clamp(46px, 13.5vw, 58px);
   }
 

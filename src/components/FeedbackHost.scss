@@ -4,6 +4,8 @@
   top: 18px;
   right: 18px;
   display: flex;
+  width: calc(100vw - 36px);
+  max-width: 390px;
   width: min(390px, calc(100vw - 36px));
   gap: 10px;
   align-items: stretch;
@@ -175,9 +177,24 @@
   }
 }
 
+.feedback-dialog-layer {
+  position: fixed;
+  z-index: 4990;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+}
+
 .feedback-dialog {
+  width: calc(100vw - 32px);
+  max-width: 520px;
   width: min(520px, calc(100vw - 32px));
-  max-width: none;
+  max-height: calc(100vh - 32px);
   max-height: min(760px, calc(100dvh - 32px));
   overflow: visible;
   padding: 0;
@@ -188,21 +205,24 @@
   outline: 0;
 
   &.size-wide {
+    max-width: 680px;
     width: min(680px, calc(100vw - 32px));
   }
 
   &.size-compact {
+    max-width: 440px;
     width: min(440px, calc(100vw - 32px));
   }
 
   &::backdrop {
-    background: rgba(0, 0, 0, 0.82);
+    background: transparent;
     animation: feedback-backdrop-enter 180ms ease;
   }
 }
 
 .feedback-dialog-surface {
   position: relative;
+  max-height: calc(100vh - 32px);
   max-height: min(760px, calc(100dvh - 32px));
   overflow-x: hidden;
   overflow-y: auto;
@@ -394,6 +414,8 @@
     background: white;
 
     img {
+      width: 100%;
+      max-width: 320px;
       width: min(320px, 100%);
       border-radius: 0;
     }
@@ -465,6 +487,7 @@
 
 @media (max-width: 600px) {
   .feedback-toast-region {
+    top: 10px;
     top: max(10px, env(safe-area-inset-top));
     right: 10px;
     width: calc(100vw - 20px);
@@ -472,11 +495,14 @@
 
   .feedback-dialog {
     width: calc(100vw - 20px) !important;
+    max-height: calc(100vh - 20px);
     max-height: calc(100dvh - 20px);
+    margin: auto 10px 10px;
     margin: auto 10px max(10px, env(safe-area-inset-bottom));
   }
 
   .feedback-dialog-surface {
+    max-height: calc(100vh - 20px);
     max-height: calc(100dvh - 20px);
     padding: 22px 18px 18px;
     border-radius: 2px;

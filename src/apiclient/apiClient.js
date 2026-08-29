@@ -10,6 +10,10 @@ import {
   encodeUploadRequest,
 } from "../utils/uploadProtocol.js";
 import { UploadProgressTracker } from "../utils/uploadProgress.js";
+import {
+  readBlobAsArrayBuffer,
+  settleAll,
+} from "../utils/browserCompatibility.js";
 
 const API_BASE =
   window.location.origin === "http://localhost:3000"
@@ -393,7 +397,9 @@ export default class ApiClient {
             const start = chunkIndex * record.chunkSize;
             const end = Math.min(file.size, start + record.chunkSize);
             const plaintextBytes = end - start;
-            const plaintext = await file.slice(start, end).arrayBuffer();
+            const plaintext = await readBlobAsArrayBuffer(
+              file.slice(start, end)
+            );
             await uploadWithRetry(
               () =>
                 createOpaqueUploadBody(
@@ -418,7 +424,7 @@ export default class ApiClient {
         }
       };
 
-      const workerResults = await Promise.allSettled(
+      const workerResults = await settleAll(
         Array.from({ length: Math.min(concurrency, pending.length) }, () =>
           worker()
         )
