@@ -898,9 +898,4 @@ function startPeriodicUploadCleanup() {
   return timer;
 }
 
-export {
-  UploadError,
-  cleanupStaleUploads,
-  processOpaqueUploadRequest,
-  startPeriodicUploadCleanup,
-};
+export { UploadError, processOpaqueUploadRequest, startPeriodicUploadCleanup };

@@ -3,10 +3,6 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Server as SocketIOServer } from "socket.io";
-import {
-  NEW_MESSAGE,
-  POST_MESSAGE,
-} from "@transfer/api/consts/socketEvents.js";
 
 import "./database.js";
 import Message from "./models/message.js";
@@ -48,12 +44,6 @@ app.get("/sessions/:id/history", async (req, res) => {
 });
 
 app.delete("/sessions/:id/history", async (req, res) => {
-  await clearMessagesBySessionId(req.params.id);
-  res.json({ success: true });
-});
-
-// Kept for clients using the original cleanup URL.
-app.get("/sessions/:id/clear_messages", async (req, res) => {
   await clearMessagesBySessionId(req.params.id);
   res.json({ success: true });
 });
@@ -182,16 +172,17 @@ app.post("/t", async (req, res) => {
     const encryptedBuffer = Buffer.concat(chunks);
 
     const decrypted = await decrypt(encryptedBuffer);
-    const clientId =
-      typeof decrypted.clientId === "string" &&
-      decrypted.clientId.length > 0 &&
-      decrypted.clientId.length <= 128
-        ? decrypted.clientId
-        : null;
+    if (
+      typeof decrypted.clientId !== "string" ||
+      decrypted.clientId.length === 0 ||
+      decrypted.clientId.length > 128
+    ) {
+      throw new Error("Invalid client ID");
+    }
 
     const newMessage = new Message({
       session_id: decrypted.sessionId,
-      client_id: clientId,
+      client_id: decrypted.clientId,
       data: {
         type: "text",
         text: decrypted.text,

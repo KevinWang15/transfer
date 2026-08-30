@@ -8,12 +8,6 @@ function run(query) {
   });
 }
 
-function all(query) {
-  return new Promise((resolve, reject) => {
-    db.all(query, [], (error, rows) => (error ? reject(error) : resolve(rows)));
-  });
-}
-
 async function createTables() {
   await run(`
     create table if not exists messages
@@ -22,15 +16,9 @@ async function createTables() {
       session_id text,
       data text,
       created_at datetime,
-      created_by text,
       client_id text
     );
   `);
-
-  const columns = await all("pragma table_info(messages);");
-  if (!columns.some((column) => column.name === "client_id")) {
-    await run("alter table messages add column client_id text;");
-  }
 
   await run(`
     create index if not exists session_id_index

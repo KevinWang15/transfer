@@ -5,7 +5,6 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import sqlite3 from "sqlite3";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -44,12 +43,11 @@ async function unusedPort() {
   return port;
 }
 
-async function startServer(extraEnvironment = {}, prepareWorkingDirectory) {
+async function startServer(extraEnvironment = {}) {
   const workingDirectory = await fs.mkdtemp(
     path.join(os.tmpdir(), "transfer-upload-test-")
   );
   await fs.mkdir(path.join(workingDirectory, "data"));
-  await prepareWorkingDirectory?.(workingDirectory);
   const port = await unusedPort();
   const child = spawn(
     process.execPath,
@@ -103,33 +101,6 @@ async function startServer(extraEnvironment = {}, prepareWorkingDirectory) {
       await fs.rm(workingDirectory, { recursive: true, force: true });
     },
   };
-}
-
-function createLegacyMessageDatabase(filename) {
-  return new Promise((resolve, reject) => {
-    const database = new sqlite3.Database(filename);
-    database.exec(
-      `create table messages
-       (
-         id integer primary key autoincrement,
-         session_id text,
-         data text,
-         created_at datetime,
-         created_by text
-       );
-       insert into messages (session_id, data, created_at)
-       values ('migration-test', '{"type":"text","text":"Keep me"}', ${
-         Date.now() - 1000
-       });`,
-      (error) => {
-        if (error) {
-          database.close(() => reject(error));
-        } else {
-          database.close(resolve);
-        }
-      }
-    );
-  });
 }
 
 async function opaquePost(baseUrl, header, payload, paddedPayloadBytes) {
@@ -542,6 +513,13 @@ test("encrypted text retries are opaque and idempotent", async (t) => {
   assert.equal(history.length, 1);
   assert.equal(history[0].client_id, message.clientId);
   assert.equal(JSON.parse(history[0].data).text, message.text);
+
+  const outdatedRequest = await postEncryptedText(server.baseUrl, {
+    text: "Missing the current client ID",
+    sessionId: message.sessionId,
+    timestamp: Date.now(),
+  });
+  assert.equal(outdatedRequest.response.status, 400);
 });
 
 test("curl API returns a download URL and supports history cleanup", async (t) => {
@@ -661,30 +639,4 @@ test("MCP tools interact with sessions over Streamable HTTP", async (t) => {
     headers: { Origin: "https://example.com" },
   });
   assert.equal(browserRequest.status, 403);
-});
-
-test("message idempotency migrates an existing database without losing history", async (t) => {
-  const server = await startServer({}, (workingDirectory) =>
-    createLegacyMessageDatabase(path.join(workingDirectory, "data/db.sqlite3"))
-  );
-  t.after(() => server.close());
-
-  const message = {
-    text: "Added after migration",
-    sessionId: "migration-test",
-    clientId: crypto.randomUUID(),
-    timestamp: Date.now(),
-  };
-  const first = await postEncryptedText(server.baseUrl, message);
-  const retried = await postEncryptedText(server.baseUrl, message);
-  assert.equal(first.response.status, 200, server.diagnostics());
-  assert.equal(first.result.messageId, retried.result.messageId);
-
-  const history = await fetch(
-    `${server.baseUrl}sessions/${message.sessionId}/history`
-  ).then((response) => response.json());
-  assert.equal(history.length, 2);
-  assert.equal(JSON.parse(history[0].data).text, "Keep me");
-  assert.equal(JSON.parse(history[1].data).text, message.text);
-  assert.equal(history[1].client_id, message.clientId);
 });

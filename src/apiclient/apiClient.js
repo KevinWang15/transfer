@@ -24,9 +24,7 @@ const WEBSOCKET_BASE =
     ? "http://localhost:6611/"
     : window.origin + `/`;
 
-const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
 const MIN_CHUNK_SIZE = 64 * 1024;
-const DEFAULT_CONCURRENCY = 3;
 const MAX_CHUNK_RETRIES = 5;
 const RESUME_STORAGE_PREFIX = "transfer.upload.v2.";
 let serverConfigPromise;
@@ -284,12 +282,11 @@ export default class ApiClient {
     progress.preparing();
     try {
       const serverConfig = await ApiClient.getServerSideConfig();
-      const configuredChunkSize =
-        serverConfig.uploads?.chunkSize || DEFAULT_CHUNK_SIZE;
+      const configuredChunkSize = serverConfig.uploads.chunkSize;
       const selectedChunkSize = paddedChunkSize(file.size, configuredChunkSize);
       const concurrency = Math.max(
         1,
-        Math.min(8, serverConfig.uploads?.concurrency || DEFAULT_CONCURRENCY)
+        Math.min(8, serverConfig.uploads.concurrency)
       );
       const storageKey = resumeStorageKey(file, sessionId, name);
       let record = loadResumeRecord(storageKey);
@@ -461,7 +458,9 @@ export default class ApiClient {
   }
 
   static async deleteEverythingInSession(id) {
-    const response = await apiFetch(`sessions/${id}/clear_messages`);
+    const response = await apiFetch(`sessions/${id}/history`, {
+      method: "DELETE",
+    });
     return responseJson(response);
   }
 

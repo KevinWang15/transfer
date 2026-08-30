@@ -188,4 +188,4 @@ function createTransferMcpHandler({ getIo }) {
   };
 }
 
-export { createTransferMcpHandler, MAX_MCP_FILE_BYTES };
+export { createTransferMcpHandler };

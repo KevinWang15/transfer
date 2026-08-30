@@ -181,7 +181,4 @@ function startPeriodicAutoPrune() {
 
 export default MessageService;
 export { listMessagesBySessionId, clearMessagesBySessionId };
-export { listAllMessages };
-export { findMessageByClientId };
-export { deleteMessageById };
 export { startPeriodicAutoPrune };

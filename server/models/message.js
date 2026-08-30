@@ -5,7 +5,6 @@ class Message {
   session_id;
   data;
   created_at;
-  created_by;
   client_id;
 
   constructor(data) {
