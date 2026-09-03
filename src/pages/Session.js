@@ -24,6 +24,7 @@ import QRCode from "qrcode";
 import { stripTrailingSlash } from "../utils/utils.js";
 import { showDialog } from "../utils/feedback.js";
 import { copyText } from "../utils/clipboard.js";
+import { openFileInput, takeFileInputSelection } from "../utils/filePicker.js";
 import UploadProgress from "../components/UploadProgress.js";
 import {
   createQueuedUploads,
@@ -56,6 +57,7 @@ class Session extends React.Component {
   uploadQueue = Promise.resolve();
   mainRef = React.createRef();
   textareaRef = React.createRef();
+  fileInputRef = React.createRef();
   dragDepth = 0;
   hasConnected = false;
   hasMounted = false;
@@ -171,16 +173,14 @@ class Session extends React.Component {
   };
 
   sendFile = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.onchange = async () => {
-      await this.uploadFiles(input.files);
-    };
+    openFileInput(this.fileInputRef.current);
+  };
 
-    document.body.appendChild(input);
-    input.click();
-    document.body.removeChild(input);
+  handleFileSelection = (event) => {
+    const files = takeFileInputSelection(event.currentTarget);
+    if (files.length) {
+      this.uploadFiles(files);
+    }
   };
 
   copySessionLink = async () => {
@@ -641,6 +641,16 @@ class Session extends React.Component {
 
     return (
       <div className="session-shell">
+        <input
+          ref={this.fileInputRef}
+          className="session-file-input"
+          type="file"
+          multiple
+          tabIndex="-1"
+          aria-hidden="true"
+          onChange={this.handleFileSelection}
+        />
+
         <header className="session-header">
           <div className="session-header-inner">
             <button
