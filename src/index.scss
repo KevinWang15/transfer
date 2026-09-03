@@ -17,6 +17,10 @@
   --accent-mint: #8de2b5;
   --danger: #ef6571;
   --hard-shadow: #000;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
   --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
 }
@@ -31,6 +35,23 @@ body {
   min-height: 100%;
   margin: 0;
   touch-action: pan-x pan-y;
+}
+
+html.session-viewport,
+body.session-viewport {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.session-viewport {
+  height: var(--session-viewport-height, 100vh);
+  min-height: 0;
+}
+
+@supports (height: 100dvh) {
+  body.session-viewport {
+    height: var(--session-viewport-height, 100dvh);
+  }
 }
 
 body {

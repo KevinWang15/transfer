@@ -2,13 +2,17 @@
   position: fixed;
   z-index: 80;
   top: 98px;
+  top: calc(98px + var(--safe-area-top));
   right: 20px;
-  right: max(20px, calc((100vw - 1180px) / 2));
+  right: max(20px, var(--safe-area-right), calc((100vw - 1180px) / 2));
   width: calc(100% - 40px);
   max-width: 510px;
   width: min(510px, calc(100% - 40px));
   max-height: calc(100vh - 124px);
-  max-height: calc(100dvh - 124px);
+  max-height: calc(
+    var(--session-viewport-height, 100dvh) - 124px - var(--safe-area-top) -
+      var(--safe-area-bottom)
+  );
   overflow: hidden;
   padding: 16px;
   color: var(--text-primary);
@@ -214,7 +218,10 @@
 
 .upload-queue-list {
   max-height: 238px;
-  max-height: max(100px, min(238px, calc(100dvh - 370px)));
+  max-height: max(
+    100px,
+    min(238px, calc(var(--session-viewport-height, 100dvh) - 370px))
+  );
   overflow-x: hidden;
   overflow-y: auto;
   margin: 12px -3px -3px;
@@ -323,10 +330,18 @@
 @media (max-width: 600px) {
   .upload-progress-panel {
     top: 76px;
+    top: calc(76px + var(--safe-area-top));
     right: 10px;
-    width: calc(100% - 20px);
+    right: max(10px, var(--safe-area-right));
+    left: 10px;
+    left: max(10px, var(--safe-area-left));
+    width: auto;
+    max-width: none;
     max-height: calc(100vh - 92px);
-    max-height: calc(100dvh - 92px);
+    max-height: calc(
+      var(--session-viewport-height, 100dvh) - 92px - var(--safe-area-top) -
+        var(--safe-area-bottom)
+    );
     padding: 13px;
     border-radius: 2px;
   }
@@ -359,7 +374,10 @@
 
   .upload-queue-list {
     max-height: 210px;
-    max-height: max(100px, min(210px, calc(100dvh - 345px)));
+    max-height: max(
+      100px,
+      min(210px, calc(var(--session-viewport-height, 100dvh) - 345px))
+    );
   }
 }
 

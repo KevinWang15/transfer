@@ -25,6 +25,7 @@ import { stripTrailingSlash } from "../utils/utils.js";
 import { showDialog } from "../utils/feedback.js";
 import { copyText } from "../utils/clipboard.js";
 import { openFileInput, takeFileInputSelection } from "../utils/filePicker.js";
+import { installSessionViewport } from "../utils/viewport.js";
 import UploadProgress from "../components/UploadProgress.js";
 import {
   createQueuedUploads,
@@ -63,6 +64,7 @@ class Session extends React.Component {
   hasMounted = false;
   confirmationTimers = new Set();
   uploadCleanupTimer = null;
+  viewportCleanup = () => {};
   uploadGeneration = 0;
   announcedUploadGeneration = 0;
 
@@ -106,6 +108,7 @@ class Session extends React.Component {
 
   componentDidMount() {
     this.hasMounted = true;
+    this.viewportCleanup = installSessionViewport();
     if (this.socket.connected) {
       this.setState({ connectionStatus: "connected" });
     }
@@ -123,6 +126,7 @@ class Session extends React.Component {
 
   componentWillUnmount() {
     this.hasMounted = false;
+    this.viewportCleanup();
     this.removeDragDropListener();
     this.confirmationTimers.forEach((timer) => window.clearTimeout(timer));
     this.confirmationTimers.clear();
