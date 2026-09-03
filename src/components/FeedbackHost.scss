@@ -185,7 +185,7 @@
   top: 0;
   right: 0;
   height: 100vh;
-  height: var(--session-viewport-height, 100dvh);
+  height: 100dvh;
   left: 0;
   display: flex;
   align-items: center;
@@ -201,8 +201,7 @@
   max-height: min(
     760px,
     calc(
-      var(--session-viewport-height, 100dvh) - 32px - var(--safe-area-top) -
-        var(--safe-area-bottom)
+      100dvh - 32px - var(--safe-area-top) - var(--safe-area-bottom)
     )
   );
   overflow: visible;
@@ -235,8 +234,7 @@
   max-height: min(
     760px,
     calc(
-      var(--session-viewport-height, 100dvh) - 32px - var(--safe-area-top) -
-        var(--safe-area-bottom)
+      100dvh - 32px - var(--safe-area-top) - var(--safe-area-bottom)
     )
   );
   overflow-x: hidden;
@@ -516,8 +514,7 @@
     width: calc(100vw - 20px) !important;
     max-height: calc(100vh - 20px);
     max-height: calc(
-      var(--session-viewport-height, 100dvh) - 20px - var(--safe-area-top) -
-        var(--safe-area-bottom)
+      100dvh - 20px - var(--safe-area-top) - var(--safe-area-bottom)
     );
     margin: auto 10px 10px;
     margin: auto max(10px, var(--safe-area-right))
@@ -527,8 +524,7 @@
   .feedback-dialog-surface {
     max-height: calc(100vh - 20px);
     max-height: calc(
-      var(--session-viewport-height, 100dvh) - 20px - var(--safe-area-top) -
-        var(--safe-area-bottom)
+      100dvh - 20px - var(--safe-area-top) - var(--safe-area-bottom)
     );
     padding: 22px 18px 18px;
     border-radius: 2px;

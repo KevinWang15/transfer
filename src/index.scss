@@ -44,13 +44,13 @@ body.session-viewport {
 }
 
 body.session-viewport {
-  height: var(--session-viewport-height, 100vh);
+  height: 100vh;
   min-height: 0;
 }
 
 @supports (height: 100dvh) {
   body.session-viewport {
-    height: var(--session-viewport-height, 100dvh);
+    height: 100dvh;
   }
 }
 

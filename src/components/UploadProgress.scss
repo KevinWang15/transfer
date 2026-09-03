@@ -10,8 +10,7 @@
   width: min(510px, calc(100% - 40px));
   max-height: calc(100vh - 124px);
   max-height: calc(
-    var(--session-viewport-height, 100dvh) - 124px - var(--safe-area-top) -
-      var(--safe-area-bottom)
+    100dvh - 124px - var(--safe-area-top) - var(--safe-area-bottom)
   );
   overflow: hidden;
   padding: 16px;
@@ -220,7 +219,7 @@
   max-height: 238px;
   max-height: max(
     100px,
-    min(238px, calc(var(--session-viewport-height, 100dvh) - 370px))
+    min(238px, calc(100dvh - 370px))
   );
   overflow-x: hidden;
   overflow-y: auto;
@@ -339,8 +338,7 @@
     max-width: none;
     max-height: calc(100vh - 92px);
     max-height: calc(
-      var(--session-viewport-height, 100dvh) - 92px - var(--safe-area-top) -
-        var(--safe-area-bottom)
+      100dvh - 92px - var(--safe-area-top) - var(--safe-area-bottom)
     );
     padding: 13px;
     border-radius: 2px;
@@ -376,7 +374,7 @@
     max-height: 210px;
     max-height: max(
       100px,
-      min(210px, calc(var(--session-viewport-height, 100dvh) - 345px))
+      min(210px, calc(100dvh - 345px))
     );
   }
 }
