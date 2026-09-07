@@ -182,6 +182,13 @@ in progress.
 
 ## Development
 
+To diagnose a missing browser upload, append `?uploadDebug=1` to a session URL
+(`&uploadDebug=1` if it already has a query string). Reproduce the problem, open
+**Upload diagnostics**, and select **Copy upload log**. This opt-in trace records
+picker events, file counts/sizes, queue transitions, and the frontend version.
+It keeps at most 200 events in page memory, excludes filenames and file contents,
+and does not send diagnostics to the server. Reloading the page clears the trace.
+
 Transfer requires Node.js 20 or newer.
 
 ```sh

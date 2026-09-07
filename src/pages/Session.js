@@ -24,9 +24,11 @@ import QRCode from "qrcode";
 import { stripTrailingSlash } from "../utils/utils.js";
 import { showDialog } from "../utils/feedback.js";
 import { copyText } from "../utils/clipboard.js";
-import { openFileInput, takeFileInputSelection } from "../utils/filePicker.js";
+import { createFilePicker } from "../utils/filePicker.js";
 import { installSessionViewport } from "../utils/viewport.js";
 import UploadProgress from "../components/UploadProgress.js";
+import UploadDiagnostics from "../components/UploadDiagnostics.js";
+import { createUploadDiagnostics } from "../utils/uploadDiagnostics.js";
 import {
   createQueuedUploads,
   summarizeUploadQueue,
@@ -58,7 +60,13 @@ class Session extends React.Component {
   uploadQueue = Promise.resolve();
   mainRef = React.createRef();
   textareaRef = React.createRef();
-  fileInputRef = React.createRef();
+  filePickerHostRef = React.createRef();
+  filePicker = null;
+  uploadDiagnostics = createUploadDiagnostics({
+    enabled:
+      new URLSearchParams(window.location.search).get("uploadDebug") === "1",
+  });
+  diagnosticsCleanup = () => {};
   dragDepth = 0;
   hasConnected = false;
   hasMounted = false;
@@ -108,6 +116,48 @@ class Session extends React.Component {
 
   componentDidMount() {
     this.hasMounted = true;
+    if (this.uploadDiagnostics.enabled) {
+      const record = this.uploadDiagnostics.record;
+      record("session-mounted", {
+        userAgent: navigator.userAgent,
+        frontend: Array.from(document.scripts, (script) =>
+          script.src.split("/").pop()
+        ).filter((name) => name.startsWith("main.")),
+      });
+      const listeners = [
+        ...[
+          "focus",
+          "blur",
+          "pageshow",
+          "pagehide",
+          "error",
+          "unhandledrejection",
+        ].map((type) => [window, type]),
+        [document, "visibilitychange"],
+      ].map(([target, type]) => {
+        const listener = (event) =>
+          record(`page-${type}`, {
+            visibility: document.visibilityState,
+            error: event.error?.name || event.reason?.name,
+            persisted: event.persisted,
+          });
+        target.addEventListener(type, listener);
+        return () => target.removeEventListener(type, listener);
+      });
+      this.diagnosticsCleanup = () => listeners.forEach((remove) => remove());
+    }
+    this.filePicker = createFilePicker(
+      this.filePickerHostRef.current,
+      this.uploadFiles,
+      (error) => {
+        console.error("file selection failed", error);
+        toast("Could not add the selected files. Please try again.", {
+          duration: 4000,
+          tone: "error",
+        });
+      },
+      this.uploadDiagnostics.enabled ? this.uploadDiagnostics.record : undefined
+    );
     this.viewportCleanup = installSessionViewport();
     if (this.socket.connected) {
       this.setState({ connectionStatus: "connected" });
@@ -126,6 +176,9 @@ class Session extends React.Component {
 
   componentWillUnmount() {
     this.hasMounted = false;
+    this.uploadDiagnostics.record("session-unmounted");
+    this.diagnosticsCleanup();
+    this.filePicker?.dispose();
     this.viewportCleanup();
     this.removeDragDropListener();
     this.confirmationTimers.forEach((timer) => window.clearTimeout(timer));
@@ -177,14 +230,27 @@ class Session extends React.Component {
   };
 
   sendFile = () => {
-    openFileInput(this.fileInputRef.current);
+    this.uploadDiagnostics.record(
+      "upload-button",
+      summarizeUploadQueue(this.state.uploads)
+    );
+    this.filePicker?.open();
   };
 
-  handleFileSelection = (event) => {
-    const files = takeFileInputSelection(event.currentTarget);
-    if (files.length) {
-      this.uploadFiles(files);
-    }
+  captureUploadDiagnostics = () => {
+    this.filePicker?.inspect();
+    this.uploadDiagnostics.record("queue-snapshot", {
+      mounted: this.hasMounted,
+      uploads: this.state.uploads.map(
+        ({ id, phase, uploadedBytes, totalBytes }) => ({
+          id,
+          phase,
+          uploadedBytes,
+          totalBytes,
+        })
+      ),
+    });
+    return this.uploadDiagnostics.getText();
   };
 
   copySessionLink = async () => {
@@ -230,7 +296,14 @@ class Session extends React.Component {
   }
 
   uploadFiles = (files) => {
+    this.uploadDiagnostics.record("queue-add-request", {
+      fileCount: files?.length,
+      mounted: this.hasMounted,
+    });
     const pendingUploads = createQueuedUploads(files);
+    this.uploadDiagnostics.record("queue-entries-created", {
+      ids: pendingUploads.map((upload) => upload.id),
+    });
     if (!pendingUploads.length) {
       return Promise.resolve();
     }
@@ -240,7 +313,13 @@ class Session extends React.Component {
     const queuedUpload = new Promise((resolve, reject) => {
       this.setState(
         (state) => ({ uploads: [...state.uploads, ...pendingUploads] }),
-        () => this.queueUploadBatch(pendingUploads).then(resolve, reject)
+        () => {
+          this.uploadDiagnostics.record(
+            "queue-add-committed",
+            summarizeUploadQueue(this.state.uploads)
+          );
+          this.queueUploadBatch(pendingUploads).then(resolve, reject);
+        }
       );
     });
 
@@ -255,10 +334,15 @@ class Session extends React.Component {
   };
 
   queueUploadBatch = (uploads) => {
-    const queuedUpload = this.uploadQueue.then(() =>
-      this.performUploads(uploads)
-    );
-    this.uploadQueue = queuedUpload.catch(() => {});
+    const ids = uploads.map((upload) => upload.id);
+    this.uploadDiagnostics.record("batch-queued", { ids });
+    const queuedUpload = this.uploadQueue.then(() => {
+      this.uploadDiagnostics.record("batch-start", { ids });
+      return this.performUploads(uploads);
+    });
+    this.uploadQueue = queuedUpload.catch((error) => {
+      this.uploadDiagnostics.record("batch-error", { ids, error: error.name });
+    });
     return queuedUpload;
   };
 
@@ -283,8 +367,14 @@ class Session extends React.Component {
         (candidate) => candidate.id === upload.id
       );
       if (!queuedUpload || queuedUpload.phase !== UPLOAD_PHASES.queued) {
+        this.uploadDiagnostics.record("upload-skipped", {
+          id: upload.id,
+          phase: queuedUpload?.phase || "missing",
+        });
         continue;
       }
+
+      this.uploadDiagnostics.record("upload-start", { id: upload.id });
 
       this.updateUpload(upload.id, {
         phase: UPLOAD_PHASES.preparing,
@@ -302,6 +392,7 @@ class Session extends React.Component {
           sessionId: this.props.router.params.id,
           onProgress: (progress) => this.updateUpload(upload.id, progress),
         });
+        this.uploadDiagnostics.record("upload-complete", { id: upload.id });
         await new Promise((resolve) =>
           this.updateUpload(
             upload.id,
@@ -317,6 +408,11 @@ class Session extends React.Component {
           )
         );
       } catch (error) {
+        this.uploadDiagnostics.record("upload-error", {
+          id: upload.id,
+          error: error.name,
+          code: error.code,
+        });
         console.error("file upload failed", error);
         await new Promise((resolve) =>
           this.updateUpload(
@@ -338,6 +434,9 @@ class Session extends React.Component {
     }
 
     this.finishUploadQueue();
+    this.uploadDiagnostics.record("batch-finished", {
+      ids: uploads.map((upload) => upload.id),
+    });
   }
 
   finishUploadQueue = () => {
@@ -645,15 +744,11 @@ class Session extends React.Component {
 
     return (
       <div className="session-shell">
-        <input
-          ref={this.fileInputRef}
-          className="session-file-input"
-          type="file"
-          multiple
-          tabIndex="-1"
-          aria-hidden="true"
-          onChange={this.handleFileSelection}
-        />
+        <div ref={this.filePickerHostRef} aria-hidden="true" />
+
+        {this.uploadDiagnostics.enabled && (
+          <UploadDiagnostics capture={this.captureUploadDiagnostics} />
+        )}
 
         <header className="session-header">
           <div className="session-header-inner">
