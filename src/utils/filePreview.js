@@ -31,8 +31,26 @@ export function previewableImageMimeType(filename) {
   return previewableImageMimeTypes.get(fileExtension(filename)) || null;
 }
 
-export function attachmentUrls(apiBase, accessKey, filename) {
-  const view = `${apiBase}attachments/${encodeURIComponent(
+export function attachmentUrls(
+  apiBase,
+  accessKey,
+  filename,
+  fileReadHost = ""
+) {
+  let readBase = apiBase;
+  if (fileReadHost) {
+    const original = new URL(apiBase);
+    const override = new URL(
+      fileReadHost.includes("://")
+        ? fileReadHost
+        : `${original.protocol}//${fileReadHost}`
+    );
+    original.protocol = override.protocol;
+    original.hostname = override.hostname;
+    original.port = override.port;
+    readBase = original.toString();
+  }
+  const view = `${readBase}attachments/${encodeURIComponent(
     String(accessKey)
   )}?fileName=${encodeURIComponent(String(filename))}`;
   return {

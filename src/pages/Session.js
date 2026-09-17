@@ -9,6 +9,12 @@ import {
 import toast from "../utils/toast.js";
 import "./Session.scss";
 import Message from "../components/Message.js";
+import SessionMenu from "../components/SessionMenu.js";
+import {
+  loadAdvancedConfig,
+  normalizeFileReadHost,
+  saveAdvancedConfig,
+} from "../utils/advancedConfig.js";
 import { IonIcon } from "@ionic/react";
 import {
   attachOutline,
@@ -19,6 +25,7 @@ import {
   linkOutline,
   qrCodeOutline,
   sendOutline,
+  settingsOutline,
   swapHorizontalOutline,
   terminalOutline,
   trashOutline,
@@ -87,6 +94,7 @@ class Session extends React.Component {
     this.state = {
       ...this.state,
       textboxText: this.loadDraft(props.router.params.id),
+      advancedConfig: loadAdvancedConfig(props.router.params.id),
     };
     this.socket = io(`${WEBSOCKET_BASE}`, {
       extraHeaders: {
@@ -301,6 +309,43 @@ class Session extends React.Component {
       });
     }
   }
+
+  openAdvancedConfiguration = async () => {
+    const sessionId = this.props.router.params.id;
+    const result = await showDialog({
+      title: "Advanced configuration",
+      icon: settingsOutline,
+      description:
+        "Override the host used for file previews, copied file links, and downloads. Leave empty to turn this off. Saved for this session in this browser.",
+      input: {
+        label: "File-read host (optional)",
+        placeholder: "https://files.example.com",
+        defaultValue: this.state.advancedConfig.fileReadHost,
+      },
+      validate: (value) => {
+        try {
+          normalizeFileReadHost(value);
+        } catch (error) {
+          return error.message;
+        }
+      },
+      showCancel: true,
+      confirmLabel: "Save configuration",
+    });
+    if (!result.isConfirmed || !this.hasMounted) return;
+    const advancedConfig = {
+      fileReadHost: normalizeFileReadHost(result.value),
+    };
+    try {
+      saveAdvancedConfig(sessionId, advancedConfig);
+      this.setState({ advancedConfig });
+      toast("Advanced configuration saved.", { tone: "success" });
+    } catch {
+      toast("Could not save configuration in this browser. Please try again.", {
+        tone: "error",
+      });
+    }
+  };
 
   receiveMessageDeletion = ({ sessionId, messageId }) => {
     if (sessionId !== this.props.router.params.id) return;
@@ -884,6 +929,9 @@ class Session extends React.Component {
                 <IonIcon icon={linkOutline} />
                 <span>Copy link</span>
               </button>
+              <SessionMenu
+                onAdvancedConfiguration={this.openAdvancedConfiguration}
+              />
             </nav>
           </div>
         </header>
@@ -919,6 +967,7 @@ class Session extends React.Component {
                     onRetry={this.retryTextMessage}
                     onEdit={this.editFailedMessage}
                     onDelete={this.deleteMessage}
+                    fileReadHost={this.state.advancedConfig.fileReadHost}
                     deleting={this.state.deletingMessageIds.includes(
                       message.id
                     )}

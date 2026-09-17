@@ -45,6 +45,19 @@ For an internet-facing deployment, put Transfer behind an HTTPS reverse proxy,
 enable WebSocket forwarding for Socket.IO, and allow request bodies at least as
 large as your configured maximum chunk size plus protocol overhead.
 
+## Advanced configuration
+
+In a session, open **… → Advanced configuration** and enter a **File-read host**
+to use a different host for image previews, opening files, copied file URLs, and
+downloads. The host must serve the same attachments at the same paths. Enter a
+hostname with an optional port to keep the current protocol, or an HTTP(S) origin
+such as `https://files.example.com` to specify the protocol too.
+
+This is off by default. Clear the field and save to restore the original URLs.
+Uploads, messages, API calls, and session links always use their original host.
+Configuration stays in this browser's `localStorage`, under
+`transfer.advanced-config`, with a separate entry keyed by each session ID.
+
 ## Browser upload behavior
 
 The browser uploader keeps whole large files out of server memory:

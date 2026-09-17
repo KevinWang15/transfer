@@ -43,6 +43,7 @@ export default function Message({
   onEdit,
   onDelete,
   deleting,
+  fileReadHost,
 }) {
   switch (message.data.type) {
     case "text":
@@ -61,6 +62,7 @@ export default function Message({
           message={message}
           onDelete={onDelete}
           deleting={deleting}
+          fileReadHost={fileReadHost}
         />
       );
     default:
@@ -264,14 +266,15 @@ function TextMessage({ message, onRetry, onEdit, onDelete, deleting }) {
   );
 }
 
-function FileMessage({ message, onDelete, deleting }) {
+function FileMessage({ message, onDelete, deleting, fileReadHost }) {
   const filename = String(message.data.filename || "attachment");
   const extension = fileExtension(filename).toUpperCase();
   const imageFile = isPreviewableImage(filename);
   const { view: viewUrl, download: downloadUrl } = attachmentUrls(
     API_BASE,
     message.data.access_key,
-    filename
+    filename,
+    fileReadHost
   );
   const storedSize = normalizedFileSize(message.data.size);
   const [resolvedSize, setResolvedSize] = useState(storedSize);
