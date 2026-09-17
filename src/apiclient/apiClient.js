@@ -255,6 +255,16 @@ function validResumeRecord(record, file, { name, sessionId }) {
 }
 
 export default class ApiClient {
+  static async deleteMessage(sessionId, messageId) {
+    const response = await apiFetch(
+      `sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(
+        messageId
+      )}`,
+      { method: "DELETE" }
+    );
+    return responseJson(response);
+  }
+
   static async loadSessionHistory(sessionId) {
     const response = await apiFetch(`sessions/${sessionId}/history`);
     return (await responseJson(response)).map((item) => ({

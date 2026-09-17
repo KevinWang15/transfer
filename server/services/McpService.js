@@ -152,6 +152,35 @@ function createTransferMcpServer({ origin, io }) {
   );
 
   server.registerTool(
+    "delete_message",
+    {
+      title: "Delete message",
+      description:
+        "Permanently delete one retained message and its uploaded file, if any, from a Transfer session. Get message IDs from get_session_history.",
+      inputSchema: z.object({
+        sessionId: sessionIdSchema.describe("Transfer session ID"),
+        messageId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      }),
+      annotations: { destructiveHint: true, idempotentHint: true },
+    },
+    async ({ sessionId, messageId }) => {
+      const deleted = await MessageService.deleteMessage(sessionId, messageId, {
+        io,
+      });
+      if (!deleted) {
+        return {
+          ...toolResult({
+            success: false,
+            error: "Message not found in this session",
+          }),
+          isError: true,
+        };
+      }
+      return toolResult({ success: true, sessionId, messageId });
+    }
+  );
+
+  server.registerTool(
     "clear_session",
     {
       title: "Clear session",

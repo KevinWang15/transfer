@@ -21,6 +21,7 @@ import {
   linkOutline,
   refreshOutline,
   timeOutline,
+  trashOutline,
 } from "ionicons/icons/index.js";
 import toast from "../utils/toast.js";
 import { copyText } from "../utils/clipboard.js";
@@ -36,16 +37,40 @@ import {
   normalizedFileSize,
 } from "../utils/filePreview.js";
 
-export default function Message({ message, onRetry, onEdit }) {
+export default function Message({
+  message,
+  onRetry,
+  onEdit,
+  onDelete,
+  deleting,
+}) {
   switch (message.data.type) {
     case "text":
       return (
-        <TextMessage message={message} onRetry={onRetry} onEdit={onEdit} />
+        <TextMessage
+          message={message}
+          onRetry={onRetry}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          deleting={deleting}
+        />
       );
     case "file":
-      return <FileMessage message={message} />;
+      return (
+        <FileMessage
+          message={message}
+          onDelete={onDelete}
+          deleting={deleting}
+        />
+      );
     default:
-      return <UnknownMessage message={message} />;
+      return (
+        <UnknownMessage
+          message={message}
+          onDelete={onDelete}
+          deleting={deleting}
+        />
+      );
   }
 }
 
@@ -55,7 +80,14 @@ const deliveryMeta = {
   failed: { icon: alertCircleOutline, label: "Not sent" },
 };
 
-function MessageMeta({ label, createdAt, deliveryStatus }) {
+function MessageMeta({
+  label,
+  createdAt,
+  deliveryStatus,
+  message,
+  onDelete,
+  deleting,
+}) {
   const createdDate = new Date(createdAt);
   const delivery = deliveryMeta[deliveryStatus];
   return (
@@ -67,14 +99,34 @@ function MessageMeta({ label, createdAt, deliveryStatus }) {
         {delivery && <IonIcon icon={delivery.icon} aria-hidden="true" />}
         {delivery?.label || label}
       </span>
-      <time dateTime={createdDate.toISOString()}>
-        {formatDate(createdDate)}
-      </time>
+      <div className="message-meta-actions">
+        <time dateTime={createdDate.toISOString()}>
+          {formatDate(createdDate)}
+        </time>
+        {onDelete && Number.isSafeInteger(message.id) && message.id > 0 && (
+          <button
+            type="button"
+            className="message-delete-action"
+            onClick={() => onDelete(message)}
+            disabled={deleting}
+            aria-label={
+              message.data.type === "file"
+                ? `Delete attachment ${message.data.filename}`
+                : "Delete message"
+            }
+            aria-busy={deleting}
+            title="Delete message"
+          >
+            <IonIcon icon={trashOutline} aria-hidden="true" />
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-function TextMessage({ message, onRetry, onEdit }) {
+function TextMessage({ message, onRetry, onEdit, onDelete, deleting }) {
   const deliveryStatus = message.deliveryStatus;
   const text = String(message.data.text ?? "");
   const contentId = useId();
@@ -130,6 +182,9 @@ function TextMessage({ message, onRetry, onEdit }) {
       }`}
     >
       <MessageMeta
+        message={message}
+        onDelete={onDelete}
+        deleting={deleting}
         label="Text message"
         createdAt={message.created_at}
         deliveryStatus={deliveryStatus}
@@ -209,7 +264,7 @@ function TextMessage({ message, onRetry, onEdit }) {
   );
 }
 
-function FileMessage({ message }) {
+function FileMessage({ message, onDelete, deleting }) {
   const filename = String(message.data.filename || "attachment");
   const extension = fileExtension(filename).toUpperCase();
   const imageFile = isPreviewableImage(filename);
@@ -299,7 +354,13 @@ function FileMessage({ message }) {
 
   return (
     <article className="message message-file">
-      <MessageMeta label="File attachment" createdAt={message.created_at} />
+      <MessageMeta
+        label="File attachment"
+        createdAt={message.created_at}
+        message={message}
+        onDelete={onDelete}
+        deleting={deleting}
+      />
       <div
         className={`message-card file-message-card ${
           showImagePreview ? "has-image-preview" : ""
@@ -371,10 +432,16 @@ function FileMessage({ message }) {
   );
 }
 
-function UnknownMessage({ message }) {
+function UnknownMessage({ message, onDelete, deleting }) {
   return (
     <article className="message message-unknown">
-      <MessageMeta label="Session update" createdAt={message.created_at} />
+      <MessageMeta
+        label="Session update"
+        createdAt={message.created_at}
+        message={message}
+        onDelete={onDelete}
+        deleting={deleting}
+      />
       <div className="message-card">
         <pre>{JSON.stringify(message.data, null, 2)}</pre>
       </div>

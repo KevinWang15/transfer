@@ -2,7 +2,10 @@ import React from "react";
 import withRouter from "../utils/withRouter.js";
 import { io } from "socket.io-client";
 import ApiClient, { API_BASE, WEBSOCKET_BASE } from "../apiclient/apiClient.js";
-import { NEW_MESSAGE } from "@transfer/api/consts/socketEvents.js";
+import {
+  MESSAGE_DELETED,
+  NEW_MESSAGE,
+} from "@transfer/api/consts/socketEvents.js";
 import toast from "../utils/toast.js";
 import "./Session.scss";
 import Message from "../components/Message.js";
@@ -47,6 +50,7 @@ import {
 class Session extends React.Component {
   state = {
     messages: [],
+    deletingMessageIds: [],
     textboxText: "",
     serversideConfig: null,
     uploads: [],
@@ -57,6 +61,8 @@ class Session extends React.Component {
   };
 
   socket = null;
+  deletedMessageIds = new Set();
+  deletionRequests = new Set();
   uploadQueue = Promise.resolve();
   mainRef = React.createRef();
   textareaRef = React.createRef();
@@ -112,6 +118,7 @@ class Session extends React.Component {
     });
 
     this.socket.on(NEW_MESSAGE, this.receiveMessage);
+    this.socket.on(MESSAGE_DELETED, this.receiveMessageDeletion);
   }
 
   componentDidMount() {
@@ -294,6 +301,63 @@ class Session extends React.Component {
       });
     }
   }
+
+  receiveMessageDeletion = ({ sessionId, messageId }) => {
+    if (sessionId !== this.props.router.params.id) return;
+    this.deletedMessageIds.add(messageId);
+    if (this.hasMounted) {
+      this.setState((state) => ({
+        messages: state.messages.filter((message) => message.id !== messageId),
+      }));
+    }
+  };
+
+  deleteMessage = async (message) => {
+    if (this.deletionRequests.has(message.id)) return;
+    this.deletionRequests.add(message.id);
+    const sessionId = this.props.router.params.id;
+    try {
+      const result = await showDialog({
+        icon: trashOutline,
+        tone: "danger",
+        title: "Delete this message?",
+        description:
+          message.data.type === "file"
+            ? `“${message.data.filename}” and its message will be permanently removed for everyone in this session. This cannot be undone.`
+            : "This message will be permanently removed for everyone in this session. This cannot be undone.",
+        showCancel: true,
+        confirmLabel: "Delete message",
+        cancelLabel: "Keep message",
+      });
+      if (!result.isConfirmed || !this.hasMounted) return;
+      this.setState((state) => ({
+        deletingMessageIds: [...state.deletingMessageIds, message.id],
+      }));
+      try {
+        await ApiClient.deleteMessage(sessionId, message.id);
+      } catch (error) {
+        // Another client or the retention sweep may have removed it already.
+        if (error.status !== 404) throw error;
+      }
+      this.receiveMessageDeletion({ sessionId, messageId: message.id });
+      if (this.hasMounted) toast("Message deleted.", { tone: "success" });
+    } catch (error) {
+      if (this.hasMounted) {
+        toast("Could not delete the message. Please try again.", {
+          tone: "error",
+        });
+      }
+    } finally {
+      this.deletionRequests.delete(message.id);
+      if (this.hasMounted) {
+        this.setState((state) => ({
+          deletingMessageIds: state.deletingMessageIds.filter(
+            (id) => id !== message.id
+          ),
+        }));
+      }
+    }
+  };
 
   uploadFiles = (files) => {
     this.uploadDiagnostics.record("queue-add-request", {
@@ -667,6 +731,7 @@ class Session extends React.Component {
   };
 
   receiveMessage = (incomingMessage) => {
+    if (this.deletedMessageIds.has(incomingMessage.id)) return;
     const shouldFollow = this.isNearBottom();
     this.setState(
       (state) => {
@@ -853,6 +918,10 @@ class Session extends React.Component {
                     key={message.client_id || message.id}
                     onRetry={this.retryTextMessage}
                     onEdit={this.editFailedMessage}
+                    onDelete={this.deleteMessage}
+                    deleting={this.state.deletingMessageIds.includes(
+                      message.id
+                    )}
                   />
                 ))}
               </div>
@@ -1009,7 +1078,11 @@ class Session extends React.Component {
       .then((history) => {
         this.setState(
           (state) => {
-            const hasNewMessages = history.some(
+            // Socket deletions can arrive while this history request is in flight.
+            const retainedHistory = history.filter(
+              (message) => !this.deletedMessageIds.has(message.id)
+            );
+            const hasNewMessages = retainedHistory.some(
               (historyMessage) =>
                 !state.messages.some((message) =>
                   messagesMatch(message, historyMessage)
@@ -1018,7 +1091,7 @@ class Session extends React.Component {
             return {
               messages: reconcileMessageHistory(
                 state.messages,
-                history,
+                retainedHistory,
                 messagesAtRequest
               ),
               historyLoaded: true,

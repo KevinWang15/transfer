@@ -50,6 +50,49 @@
   }
 }
 
+.message-meta-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.message-delete-action {
+  display: inline-flex;
+  min-height: 32px;
+  gap: 5px;
+  align-items: center;
+  padding: 0 7px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 10px;
+
+  ion-icon {
+    width: 13px;
+    height: 13px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: #f08a93;
+    background: rgba(235, 105, 118, 0.08);
+    border-color: rgba(235, 105, 118, 0.25);
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
+}
+
+@media (pointer: coarse) {
+  .message-delete-action {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 .message-card {
   width: 100%;
   color: var(--text-primary);

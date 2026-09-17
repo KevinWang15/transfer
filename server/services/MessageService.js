@@ -2,7 +2,10 @@ import fs from "fs";
 import { db } from "../database.js";
 import Message from "../models/message.js";
 import config from "../config.js";
-import { NEW_MESSAGE } from "@transfer/api/consts/socketEvents.js";
+import {
+  MESSAGE_DELETED,
+  NEW_MESSAGE,
+} from "@transfer/api/consts/socketEvents.js";
 
 function calcMessagesToDelete(messages) {
   const byMaxCount = messages.length - config.messagesToKeep.maxCount;
@@ -90,6 +93,46 @@ function clearMessagesBySessionId(sessionId) {
 }
 
 class MessageService {
+  static async deleteMessage(sessionId, messageId, { io }) {
+    const message = await new Promise((resolve, reject) => {
+      db.get(
+        "SELECT * FROM messages WHERE session_id = ? AND id = ?",
+        [sessionId, messageId],
+        (error, row) => (error ? reject(error) : resolve(row))
+      );
+    });
+    if (!message) {
+      return false;
+    }
+
+    const data = JSON.parse(message.data);
+    if (data.type === "file") {
+      try {
+        await fs.promises.unlink(`./data/file-uploads/${data.access_key}`);
+      } catch (error) {
+        // A missing attachment should not prevent removing its message.
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    }
+
+    const deleted = await new Promise((resolve, reject) => {
+      db.run(
+        "DELETE FROM messages WHERE session_id = ? AND id = ?",
+        [sessionId, messageId],
+        function (error) {
+          if (error) reject(error);
+          else resolve(this.changes > 0);
+        }
+      );
+    });
+    if (deleted) {
+      io.to(sessionId).emit(MESSAGE_DELETED, { sessionId, messageId });
+    }
+    return deleted;
+  }
+
   static async addMessage(message, { sessionId, io }) {
     const messageId = await message.save();
     if (messageId === null && message.client_id) {

@@ -16,6 +16,7 @@ devices. Create a session, share its link, and everything appears in real time.
 - Real-time sessions with share links, QR codes, and no account setup
 - Folded long messages, pending-send feedback, and responsive desktop/mobile UI
 - Direct curl API and a Streamable HTTP MCP endpoint for automation
+- Delete individual messages and their attachments from the UI, API, or MCP
 - Automatic cleanup of old messages, files, and abandoned upload chunks
 
 ![A Transfer session with text, file, and image messages](./docs/images/transfer-session.png)
@@ -69,7 +70,7 @@ days by default.
 ## Security model
 
 - Treat a session URL as a capability secret: anyone who knows the session ID
-  can read its retained history, post to it, or clear it.
+  can read its retained history, post to it, delete individual messages, or clear it.
 - Browser message sends and special uploads use application-layer authenticated
   encryption. This makes the upload exchange opaque to passive request
   inspection, but session history and attachment downloads use regular HTTP
@@ -109,6 +110,10 @@ curl -X POST \
 # Read retained session history
 curl "$BASE_URL/sessions/$SESSION_ID/history"
 
+# Permanently delete one message and its uploaded file (use an ID from history)
+MESSAGE_ID=123
+curl -X DELETE "$BASE_URL/sessions/$SESSION_ID/messages/$MESSAGE_ID"
+
 # Permanently delete the session history and its uploaded files
 curl -X DELETE "$BASE_URL/sessions/$SESSION_ID/history"
 ```
@@ -116,6 +121,12 @@ curl -X DELETE "$BASE_URL/sessions/$SESSION_ID/history"
 The file-upload response contains `success`, an absolute `url`, `accessKey`, and
 `messageId`. URLs for supported image types open inline by default; append
 `download=1` to force a download. Other file types download by default.
+
+Individual deletion returns `{ "success": true, "sessionId": "…", "messageId": 123 }`.
+Invalid message IDs return HTTP 400; missing messages (including IDs belonging to
+another session) return HTTP 404. Deletion is permanent and immediately updates
+connected clients in that session. In the UI, select **Delete** beside a message
+and confirm; file and image messages also remove their uploaded attachment.
 
 ## MCP
 
@@ -125,14 +136,15 @@ AI agents can connect to the Streamable HTTP endpoint at:
 https://transfer.example.com/mcp
 ```
 
-The endpoint exposes four tools:
+The endpoint exposes five tools:
 
-| Tool                  | Purpose                                      |
-| --------------------- | -------------------------------------------- |
-| `send_text`           | Send a text message to a session             |
-| `upload_file`         | Upload base64-encoded content up to 10 MiB   |
-| `get_session_history` | Read retained messages and attachment URLs   |
-| `clear_session`       | Permanently remove a session's retained data |
+| Tool                  | Purpose                                                          |
+| --------------------- | ---------------------------------------------------------------- |
+| `send_text`           | Send a text message to a session                                 |
+| `upload_file`         | Upload base64-encoded content up to 10 MiB                       |
+| `get_session_history` | Read retained messages and attachment URLs                       |
+| `delete_message`      | Delete one message and attachment by `sessionId` and `messageId` |
+| `clear_session`       | Permanently remove a session's retained data                     |
 
 MCP client configuration varies, but a URL-based configuration commonly looks
 like this:
@@ -225,3 +237,26 @@ npm run build
 # Start the production server from the build output
 npm run start-server
 ```
+
+To check individual deletion in a real browser, start an isolated test app and
+Chrome locally (the host-network Chrome command below is for Linux):
+
+```sh
+docker build -t transfer:delete-test .
+docker run -d --name transfer-delete-test -p 127.0.0.1:16611:6611 transfer:delete-test
+docker run --rm transfer:delete-test npm test
+docker run -d --name transfer-delete-chrome --network host --shm-size=512m \
+  chromedp/headless-shell:latest \
+  --remote-debugging-address=127.0.0.1 --remote-debugging-port=19222
+
+# Node.js 22+; uses Chrome DevTools Protocol directly
+node scripts/verify-message-deletion-cdp.mjs
+
+docker rm -f transfer-delete-test transfer-delete-chrome
+```
+
+The browser checks cover desktop/mobile deletion, cancellation, keyboard access,
+attachment removal, live updates across tabs, API/MCP deletion, failure and retry,
+pending sends, and delayed history responses. Screenshots and results are saved
+under `/tmp/transfer-message-deletion-cdp`. Override `TRANSFER_BASE_URL`, `CDP_URL`,
+or `CDP_ARTIFACTS` as needed; use a disposable app instance for these checks.

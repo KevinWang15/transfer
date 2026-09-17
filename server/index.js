@@ -48,6 +48,32 @@ app.delete("/sessions/:id/history", async (req, res) => {
   res.json({ success: true });
 });
 
+app.delete("/sessions/:id/messages/:messageId", async (req, res) => {
+  const messageId = Number(req.params.messageId);
+  if (
+    !/^[1-9]\d*$/.test(req.params.messageId) ||
+    !Number.isSafeInteger(messageId)
+  ) {
+    return res.status(400).json({ error: "Invalid message ID" });
+  }
+  try {
+    const deleted = await MessageService.deleteMessage(
+      req.params.id,
+      messageId,
+      { io }
+    );
+    if (!deleted) {
+      return res
+        .status(404)
+        .json({ error: "Message not found in this session" });
+    }
+    res.json({ success: true, sessionId: req.params.id, messageId });
+  } catch (error) {
+    console.error("message could not be deleted", error);
+    res.status(500).json({ error: "Could not delete the message" });
+  }
+});
+
 app.get("/serverside-config", async (req, res) => {
   res
     .set({

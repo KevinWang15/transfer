@@ -6,6 +6,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { io } from "socket.io-client";
+import { MESSAGE_DELETED } from "@transfer/api/consts/socketEvents.js";
 import { fileURLToPath } from "node:url";
 import {
   Client,
@@ -586,6 +588,7 @@ test("MCP tools interact with sessions over Streamable HTTP", async (t) => {
   const tools = await client.listTools();
   assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
     "clear_session",
+    "delete_message",
     "get_session_history",
     "send_text",
     "upload_file",
@@ -622,6 +625,46 @@ test("MCP tools interact with sessions over Streamable HTTP", async (t) => {
     uploaded.structuredContent.url
   );
 
+  const deleteTool = tools.tools.find((tool) => tool.name === "delete_message");
+  assert.equal(deleteTool.annotations.destructiveHint, true);
+  assert.equal(deleteTool.annotations.idempotentHint, true);
+  for (const messageId of [0, -1, 1.5, "1", Number.MAX_SAFE_INTEGER + 1]) {
+    const invalid = await client.callTool({
+      name: "delete_message",
+      arguments: { sessionId, messageId },
+    });
+    assert.equal(invalid.isError, true);
+  }
+  const wrongSession = await client.callTool({
+    name: "delete_message",
+    arguments: {
+      sessionId: "another-session",
+      messageId: uploaded.structuredContent.messageId,
+    },
+  });
+  assert.equal(wrongSession.isError, true);
+  assert.equal((await fetch(uploaded.structuredContent.url)).status, 200);
+
+  const deleted = await client.callTool({
+    name: "delete_message",
+    arguments: { sessionId, messageId: uploaded.structuredContent.messageId },
+  });
+  assert.equal(deleted.structuredContent.success, true);
+  assert.equal((await fetch(uploaded.structuredContent.url)).status, 404);
+  const remaining = await client.callTool({
+    name: "get_session_history",
+    arguments: { sessionId },
+  });
+  assert.deepEqual(
+    remaining.structuredContent.messages.map((message) => message.id),
+    [sent.structuredContent.messageId]
+  );
+  const repeated = await client.callTool({
+    name: "delete_message",
+    arguments: { sessionId, messageId: uploaded.structuredContent.messageId },
+  });
+  assert.equal(repeated.isError, true);
+
   const cleared = await client.callTool({
     name: "clear_session",
     arguments: { sessionId },
@@ -639,4 +682,146 @@ test("MCP tools interact with sessions over Streamable HTTP", async (t) => {
     headers: { Origin: "https://example.com" },
   });
   assert.equal(browserRequest.status, 403);
+});
+
+async function watchDeletions(server, sessionId, t) {
+  const socket = io(server.baseUrl, { extraHeaders: { sessionId } });
+  t.after(() => socket.disconnect());
+  const events = [];
+  socket.on(MESSAGE_DELETED, (event) => events.push(event));
+  await new Promise((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("connect_error", reject);
+  });
+  return events;
+}
+
+async function uploadDeletionFixture(
+  server,
+  sessionId,
+  filename = "delete-me.txt"
+) {
+  const form = new FormData();
+  form.set("sessionId", sessionId);
+  form.set("file", new Blob(["attachment contents"]), filename);
+  const response = await fetch(`${server.baseUrl}file`, {
+    method: "POST",
+    body: form,
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+test("individual API deletion is scoped, validates IDs, removes files, and broadcasts once", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+  const sessionId = "delete-api-session";
+  const events = await watchDeletions(server, sessionId, t);
+  const otherEvents = await watchDeletions(server, "unrelated-session", t);
+  const file = await uploadDeletionFixture(server, sessionId);
+  const otherFile = await uploadDeletionFixture(server, "unrelated-session");
+  const sent = await postEncryptedText(server.baseUrl, {
+    sessionId,
+    text: "Keep this message",
+    clientId: crypto.randomUUID(),
+    timestamp: Date.now(),
+  });
+  const deletionUrl = (id, session = sessionId) =>
+    `${server.baseUrl}sessions/${encodeURIComponent(session)}/messages/${id}`;
+  const remove = (id, session) =>
+    fetch(deletionUrl(id, session), { method: "DELETE" });
+  for (const id of [
+    "0",
+    "-1",
+    "1.5",
+    "abc",
+    "1e2",
+    "01",
+    "9007199254740992",
+    "1%20OR%201=1",
+  ]) {
+    assert.equal((await remove(id)).status, 400, id);
+  }
+  assert.equal((await remove(file.messageId, "unrelated-session")).status, 404);
+  assert.equal((await fetch(file.url)).status, 200);
+  assert.equal((await remove(999999)).status, 404);
+
+  const responses = await Promise.all([
+    remove(file.messageId),
+    remove(file.messageId),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status).sort(),
+    [200, 404]
+  );
+  const success = await responses
+    .find((response) => response.status === 200)
+    .json();
+  assert.deepEqual(success, {
+    success: true,
+    sessionId,
+    messageId: file.messageId,
+  });
+  assert.equal((await remove(file.messageId)).status, 404);
+  assert.equal((await fetch(file.url)).status, 404);
+  await assert.rejects(
+    fs.stat(
+      path.join(server.workingDirectory, "data/file-uploads", file.accessKey)
+    ),
+    { code: "ENOENT" }
+  );
+  assert.equal((await fetch(otherFile.url)).status, 200);
+  const history = await fetch(
+    `${server.baseUrl}sessions/${sessionId}/history`
+  ).then((r) => r.json());
+  assert.deepEqual(
+    history.map((message) => message.id),
+    [sent.result.messageId]
+  );
+  assert.equal((await remove(sent.result.messageId)).status, 200);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(events, [
+    { sessionId, messageId: file.messageId },
+    { sessionId, messageId: sent.result.messageId },
+  ]);
+  assert.deepEqual(otherEvents, []);
+  assert.deepEqual(
+    await fetch(`${server.baseUrl}sessions/${sessionId}/history`).then((r) =>
+      r.json()
+    ),
+    []
+  );
+});
+
+test("deleting a missing attachment succeeds; cleanup failures retain the message for retry", async (t) => {
+  const server = await startServer();
+  t.after(() => server.close());
+  const sessionId = "delete-cleanup-session";
+  const events = await watchDeletions(server, sessionId, t);
+  const file = await uploadDeletionFixture(server, sessionId);
+  const filename = path.join(
+    server.workingDirectory,
+    "data/file-uploads",
+    file.accessKey
+  );
+  await fs.unlink(filename);
+  await fs.mkdir(filename);
+  const remove = () =>
+    fetch(`${server.baseUrl}sessions/${sessionId}/messages/${file.messageId}`, {
+      method: "DELETE",
+    });
+  assert.equal((await remove()).status, 500);
+  const history = await fetch(
+    `${server.baseUrl}sessions/${sessionId}/history`
+  ).then((r) => r.json());
+  assert.equal(history.length, 1);
+  assert.deepEqual(events, []);
+  await fs.rmdir(filename);
+  assert.equal((await remove()).status, 200);
+  assert.deepEqual(
+    await fetch(`${server.baseUrl}sessions/${sessionId}/history`).then((r) =>
+      r.json()
+    ),
+    []
+  );
 });
